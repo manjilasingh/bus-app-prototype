@@ -534,10 +534,11 @@ function renderRoutesPage() {
 
 function renderRouteListCard(route, index) {
   const active = index !== 3;
-  const showCalendar = route.id === "r1" || route.id === "r5";
-  const timetable = TIMETABLES[route.id];
+  const timetable = TIMETABLES[route.id]; // array of {stopName, times[]} or null
+  const isOpen = state.openTimetable === route.id;
+
   return `
-    <article class="list-card">
+    <article class="list-card ${isOpen ? "is-timetable-open" : ""}" data-route-id="${route.id}">
       <button class="route-badge" data-open-route="${route.id}" style="--route:${route.color};">${route.shortName}</button>
       <div class="list-copy" data-open-route="${route.id}">
         <div class="list-title">${route.name}</div>
@@ -545,13 +546,51 @@ function renderRouteListCard(route, index) {
         <div class="list-meta">⏱ ${route.durationLabel} • 📍 ${route.stops.length} stops</div>
       </div>
       <div class="status-stack">
-        <span class="status-pill ${active ? "active" : "inactive"}">${active ? "Active" : "Not Active"}</span>
-        ${showCalendar ? `<button class="calendar-button" data-toggle-timetable="${route.id}">🗓</button>` : ""}
+        <span class="status-pill ${active ? "active" : "inactive"}">${active ? "Active" : "Inactive"}</span>
+        <button class="calendar-button ${isOpen ? "is-active" : ""}" data-toggle-timetable="${route.id}" aria-label="View schedule" title="View schedule">🗓</button>
       </div>
-      ${state.openTimetable === route.id && timetable
-        ? `<div class="timetable-row">${timetable.map((time) => `<span>${time}</span>`).join("")}</div>`
-        : ""}
+      ${isOpen ? renderTimetablePanel(route, timetable) : ""}
     </article>
+  `;
+}
+
+function renderTimetablePanel(route, timetable) {
+  if (!timetable) {
+    return `
+      <div class="timetable-panel" style="--route:${route.color};">
+        <div class="timetable-loop-notice">
+          <span class="timetable-loop-icon">🔄</span>
+          <div>
+            <div class="timetable-loop-title">Continuous Loop</div>
+            <div class="timetable-loop-body">The ${route.name} runs on a continuous loop with no fixed departure schedule. Buses arrive approximately every ${route.durationLabel}.</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="timetable-panel" style="--route:${route.color};">
+      <div class="timetable-header">
+        <span class="timetable-label">Schedule</span>
+        <span class="timetable-note">Showing morning departures · times may vary</span>
+      </div>
+      <div class="timetable-stops">
+        ${timetable.map((entry, i) => `
+          <div class="timetable-stop-row">
+            <div class="timetable-stop-name">
+              <span class="timetable-stop-dot ${i === 0 ? "is-first" : i === timetable.length - 1 ? "is-last" : ""}"></span>
+              ${entry.stopName}
+            </div>
+            <div class="timetable-times-scroll">
+              <div class="timetable-times">
+                ${entry.times.map((t) => `<span class="timetable-time">${t}</span>`).join("")}
+              </div>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    </div>
   `;
 }
 
@@ -951,8 +990,33 @@ function bindEvents() {
 
   document.querySelectorAll("[data-toggle-timetable]").forEach((button) => {
     button.addEventListener("click", () => {
-      state.openTimetable = state.openTimetable === button.dataset.toggleTimetable ? null : button.dataset.toggleTimetable;
-      render();
+      const routeId = button.dataset.toggleTimetable;
+      const wasOpen = state.openTimetable === routeId;
+
+      // Close any previously open timetable in the DOM without re-rendering
+      if (state.openTimetable) {
+        const prevCard = document.querySelector(`.list-card[data-route-id="${state.openTimetable}"]`);
+        if (prevCard) {
+          prevCard.classList.remove("is-timetable-open");
+          prevCard.querySelector(".timetable-panel")?.remove();
+          prevCard.querySelector(".calendar-button")?.classList.remove("is-active");
+        }
+      }
+
+      state.openTimetable = wasOpen ? null : routeId;
+
+      // Open the new timetable in the DOM without re-rendering
+      if (state.openTimetable) {
+        const card = document.querySelector(`.list-card[data-route-id="${routeId}"]`);
+        const route = ROUTES.find((r) => r.id === routeId);
+        if (card && route) {
+          card.classList.add("is-timetable-open");
+          card.querySelector(".calendar-button")?.classList.add("is-active");
+          const panel = document.createElement("div");
+          panel.innerHTML = renderTimetablePanel(route, TIMETABLES[routeId]);
+          card.appendChild(panel.firstElementChild);
+        }
+      }
     });
   });
 
