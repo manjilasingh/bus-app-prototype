@@ -76,8 +76,69 @@ function bindSimulation() {
       }
     });
 
-    render();
+    updateMapOnly();
   }, 3600);
+}
+
+// Surgically updates only the moving bus markers and stop statuses on the map,
+// leaving the rest of the DOM (inputs, scroll position, sheet) completely untouched.
+function updateMapOnly() {
+  const selectedRoute = getSelectedRoute();
+  const highlightedRouteIds = state.selectedRouteOptionId
+    ? getHighlightedRoutesFromOption(state.selectedRouteOptionId)
+    : [selectedRoute.id];
+
+  ROUTES.forEach((route) => {
+    const bus = getBusPosition(route);
+    const highlighted = highlightedRouteIds.includes(route.id);
+
+    // Move the bus marker
+    const busEl = document.querySelector(`.bus-marker[data-open-route="${route.id}"]`);
+    if (busEl) {
+      busEl.style.left = `${bus.x}%`;
+      busEl.style.top = `${bus.y}%`;
+      busEl.classList.toggle("pulse", highlighted);
+    }
+
+    // Update stop statuses if the route detail sheet is open for this route
+    if (state.screen === "routeDetails" && state.selectedRouteId === route.id) {
+      route.stops.forEach((stop, index) => {
+        const stopEl = document.querySelector(`.stop-marker[data-open-route="${route.id}"][style*="left:${stop.x}%"]`);
+        const status = getStopStatus(route, index);
+        if (stopEl) {
+          stopEl.classList.toggle("is-current", status.variant === "current");
+        }
+      });
+
+      // Update the ETA pill and status copy in the sheet
+      const busStopIndex = getCurrentStopIndex(route);
+      const etaPill = document.querySelector(".eta-pill");
+      if (etaPill) {
+        etaPill.textContent = `${busStopIndex.nextEta} away`;
+      }
+      const statusCopy = document.querySelector(".status-copy");
+      if (statusCopy) {
+        statusCopy.textContent = `Bus is currently near ${busStopIndex.currentStop.name}`;
+      }
+
+      // Update each stop row's status label and highlight
+      const stopRows = document.querySelectorAll(".stop-row");
+      route.stops.forEach((stop, index) => {
+        const row = stopRows[index];
+        if (!row) return;
+        const status = getStopStatus(route, index);
+        row.classList.toggle("is-bus-location", status.variant === "current");
+        const iconEl = row.querySelector(".stop-icon");
+        if (iconEl) {
+          iconEl.className = `stop-icon ${status.variant}`;
+        }
+        const statusEl = row.querySelector(".stop-status");
+        if (statusEl) {
+          statusEl.textContent = status.label;
+        }
+      });
+    }
+  });
 }
 
 function nearStop(route, progress) {
