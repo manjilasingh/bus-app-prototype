@@ -16,6 +16,7 @@ const state = {
   routingResults: [],
   routeOptionCatalog: initialOptionCatalog,
   showFilters: false,
+  filterSearch: "",
   showPlanner: false,
   favoriteRouteOptionIds: new Set(["route-opt-Student Recreation Center-mixed"]),
   favoriteRoutes: new Set(["r1", "r5"]),
@@ -76,8 +77,69 @@ function bindSimulation() {
       }
     });
 
-    render();
+    updateMapOnly();
   }, 3600);
+}
+
+// Surgically updates only the moving bus markers and stop statuses on the map,
+// leaving the rest of the DOM (inputs, scroll position, sheet) completely untouched.
+function updateMapOnly() {
+  const selectedRoute = getSelectedRoute();
+  const highlightedRouteIds = state.selectedRouteOptionId
+    ? getHighlightedRoutesFromOption(state.selectedRouteOptionId)
+    : [selectedRoute.id];
+
+  ROUTES.forEach((route) => {
+    const bus = getBusPosition(route);
+    const highlighted = highlightedRouteIds.includes(route.id);
+
+    // Move the bus marker
+    const busEl = document.querySelector(`.bus-marker[data-open-route="${route.id}"]`);
+    if (busEl) {
+      busEl.style.left = `${bus.x}%`;
+      busEl.style.top = `${bus.y}%`;
+      busEl.classList.toggle("pulse", highlighted);
+    }
+
+    // Update stop statuses if the route detail sheet is open for this route
+    if (state.screen === "routeDetails" && state.selectedRouteId === route.id) {
+      route.stops.forEach((stop, index) => {
+        const stopEl = document.querySelector(`.stop-marker[data-open-route="${route.id}"][style*="left:${stop.x}%"]`);
+        const status = getStopStatus(route, index);
+        if (stopEl) {
+          stopEl.classList.toggle("is-current", status.variant === "current");
+        }
+      });
+
+      // Update the ETA pill and status copy in the sheet
+      const busStopIndex = getCurrentStopIndex(route);
+      const etaPill = document.querySelector(".eta-pill");
+      if (etaPill) {
+        etaPill.textContent = `${busStopIndex.nextEta} away`;
+      }
+      const statusCopy = document.querySelector(".status-copy");
+      if (statusCopy) {
+        statusCopy.textContent = `Bus is currently near ${busStopIndex.currentStop.name}`;
+      }
+
+      // Update each stop row's status label and highlight
+      const stopRows = document.querySelectorAll(".stop-row");
+      route.stops.forEach((stop, index) => {
+        const row = stopRows[index];
+        if (!row) return;
+        const status = getStopStatus(route, index);
+        row.classList.toggle("is-bus-location", status.variant === "current");
+        const iconEl = row.querySelector(".stop-icon");
+        if (iconEl) {
+          iconEl.className = `stop-icon ${status.variant}`;
+        }
+        const statusEl = row.querySelector(".stop-status");
+        if (statusEl) {
+          statusEl.textContent = status.label;
+        }
+      });
+    }
+  });
 }
 
 function nearStop(route, progress) {
@@ -210,7 +272,7 @@ function renderMapLayer() {
       <div class="campus-label label-c">Main Library</div>
       ${visibleRoutes.map((route) => renderRouteLayer(route, highlightedRouteIds)).join("")}
       ${renderUserMarker()}
-      ${state.screen === "routeDetails" ? renderRouteHeroCard(selectedRoute) : ""}
+      ${state.screen === "routeDetails" ? "" : ""}
     </section>
   `;
 }
@@ -301,7 +363,7 @@ function renderHomeSheet() {
       </label>
       <button class="filter-button" data-toggle-filters>☰</button>
     </div>
-    ${renderFilterTray()}
+    ${renderFilterModal()}
     <section class="bottom-sheet ${state.sheetState === 0 ? "is-hidden" : ""}" data-sheet>
       <div class="sheet-handle" data-sheet-handle></div>
       <div class="sheet-content">
@@ -421,15 +483,16 @@ function renderRouteDetailsSheet() {
   return `
     <section class="bottom-sheet route-details-sheet details-open ${state.sheetState === 0 ? "is-hidden" : ""}" data-sheet>
       <div class="sheet-handle" data-sheet-handle></div>
-      <div class="sheet-content">
-        <div class="sheet-header">
-          <div>
-            <div class="eyebrow">Route Stops</div>
-            <h2>${route.name}</h2>
-          </div>
-          <div class="eta-pill">${busStopIndex.nextEta} away</div>
+      <div class="sheet-header sheet-header--sticky">
+        <button class="ghost-button" data-back-map>←</button>
+        <div>
+          <div class="eyebrow">Route Stops</div>
+          <h2>${route.name}</h2>
         </div>
-        <p class="status-copy">Bus is currently near ${busStopIndex.currentStop.name}</p>
+        <div class="eta-pill">${busStopIndex.nextEta} away</div>
+      </div>
+      <div class="sheet-content">
+        <p class="status-copy" style="margin-top:0;">Bus is currently near ${busStopIndex.currentStop.name}</p>
         <div class="stop-list">
           ${route.stops
             .map((stop, index) => {
@@ -506,7 +569,7 @@ function renderSavedPage() {
           <div class="page-subtitle">Quick access to favorite trips and bus lines</div>
         </div>
       </div>
-      <div class="saved-grid">
+      <div class="panel-scroll saved-grid">
         ${routeCards
           .map(
             (route) => `
@@ -547,50 +610,90 @@ function renderAlertsPage() {
           <div class="page-subtitle">Create simulated bus arrival alerts</div>
         </div>
       </div>
-      <div class="alert-form">
-        <label>
-          <span>Route</span>
-          <select data-alert-route>
-            ${ROUTES.map((route) => `<option value="${route.id}" ${route.id === selectedRoute.id ? "selected" : ""}>${route.name}</option>`).join("")}
-          </select>
-        </label>
-        <label>
-          <span>Stop</span>
-          <select data-alert-stop>
-            ${stops.map((stop) => `<option value="${stop.id}" ${stop.id === state.alertForm.stopId ? "selected" : ""}>${stop.name}</option>`).join("")}
-          </select>
-        </label>
-        <label>
-          <span>Time range</span>
-          <select data-alert-time>
-            ${["0-5 min", "5-15 min", "15-30 min"].map((value) => `<option value="${value}" ${value === state.alertForm.timeRange ? "selected" : ""}>${value}</option>`).join("")}
-          </select>
-        </label>
-        <fieldset>
-          <legend>Days</legend>
-          <div class="day-row">
-            ${["Mon", "Tue", "Wed", "Thu", "Fri"].map((day) => `<button class="day-pill ${state.alertForm.days.includes(day) ? "is-selected" : ""}" data-day="${day}">${day}</button>`).join("")}
-          </div>
-        </fieldset>
-        <button class="select-route-button" data-create-alert>Create Alert</button>
-      </div>
-      <div class="alert-feed">
-        ${state.alerts.map((alert) => `<div class="alert-card">${alert.message}</div>`).join("")}
+      <div class="panel-scroll">
+        <div class="alert-form">
+          <label>
+            <span>Route</span>
+            <select data-alert-route>
+              ${ROUTES.map((route) => `<option value="${route.id}" ${route.id === selectedRoute.id ? "selected" : ""}>${route.name}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Stop</span>
+            <select data-alert-stop>
+              ${stops.map((stop) => `<option value="${stop.id}" ${stop.id === state.alertForm.stopId ? "selected" : ""}>${stop.name}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Time range</span>
+            <select data-alert-time>
+              ${["0-5 min", "5-15 min", "15-30 min"].map((value) => `<option value="${value}" ${value === state.alertForm.timeRange ? "selected" : ""}>${value}</option>`).join("")}
+            </select>
+          </label>
+          <fieldset>
+            <legend>Days</legend>
+            <div class="day-row">
+              ${["Mon", "Tue", "Wed", "Thu", "Fri"].map((day) => `<button class="day-pill ${state.alertForm.days.includes(day) ? "is-selected" : ""}" data-day="${day}">${day}</button>`).join("")}
+            </div>
+          </fieldset>
+          <button class="select-route-button" data-create-alert>Create Alert</button>
+        </div>
+        <div class="alert-feed">
+          ${state.alerts.map((alert) => `<div class="alert-card">${alert.message}</div>`).join("")}
+        </div>
       </div>
     </section>
   `;
 }
 
-function renderFilterTray() {
+function renderFilterModal() {
+  if (!state.showFilters) return "";
+
+  const query = state.filterSearch.toLowerCase();
+  const visibleCount = Object.values(state.routeVisibility).filter(Boolean).length;
+  const filtered = ROUTES.filter(
+    (route) =>
+      route.name.toLowerCase().includes(query) ||
+      route.shortName.toLowerCase().includes(query)
+  );
+
   return `
-    <div class="filter-tray ${state.showFilters ? "is-open" : ""}">
-      ${ROUTES.map(
-        (route) => `
-          <button class="filter-chip ${state.routeVisibility[route.id] ? "is-on" : "is-off"}" data-toggle-route="${route.id}" style="--route:${route.color};">
-            <span class="dot"></span>${route.shortName}
-          </button>
-        `
-      ).join("")}
+    <div class="filter-backdrop" data-close-filters></div>
+    <div class="filter-modal" role="dialog" aria-modal="true" aria-label="Filter routes">
+      <div class="filter-modal-header">
+        <span class="filter-modal-title">Filter Routes</span>
+        <div class="filter-modal-actions">
+          <button class="filter-action-link" data-filter-all>All</button>
+          <button class="filter-action-link" data-filter-none>None</button>
+          <button class="filter-modal-close" data-close-filters aria-label="Close">✕</button>
+        </div>
+      </div>
+      <div class="filter-search-wrap">
+        <input
+          id="filter-search-input"
+          class="filter-search-input"
+          placeholder="Search routes…"
+          value="${state.filterSearch}"
+          autocomplete="off"
+        />
+      </div>
+      <div class="filter-route-list">
+        ${filtered.length ? filtered.map((route) => {
+          const on = state.routeVisibility[route.id];
+          return `
+            <label class="filter-route-row" style="--route:${route.color};">
+              <input type="checkbox" class="filter-checkbox" data-toggle-route="${route.id}" ${on ? "checked" : ""} />
+              <span class="filter-route-badge">${route.shortName}</span>
+              <span class="filter-route-name">${route.name}</span>
+              <span class="filter-route-meta">${route.stops.length} stops · ${route.durationLabel}</span>
+            </label>
+          `;
+        }).join("") : `<div class="filter-empty">No routes match "<em>${state.filterSearch}</em>"</div>`}
+      </div>
+      <div class="filter-modal-footer">
+        <span class="filter-count">${visibleCount} of ${ROUTES.length} shown</span>
+        <button class="filter-done-button" data-close-filters>Done</button>
+      </div>
     </div>
   `;
 }
@@ -723,18 +826,84 @@ function bindEvents() {
     });
   });
 
-  document.querySelectorAll("[data-toggle-route]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const routeId = button.dataset.toggleRoute;
-      state.routeVisibility[routeId] = !state.routeVisibility[routeId];
-      render();
+  document.querySelectorAll("[data-toggle-route]").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => {
+      const routeId = checkbox.dataset.toggleRoute;
+      state.routeVisibility[routeId] = checkbox.checked;
+      // Update the visible count in the footer without full re-render
+      const countEl = document.querySelector(".filter-count");
+      if (countEl) {
+        const visibleCount = Object.values(state.routeVisibility).filter(Boolean).length;
+        countEl.textContent = `${visibleCount} of ${ROUTES.length} shown`;
+      }
     });
   });
 
   document.querySelector("[data-toggle-filters]")?.addEventListener("click", () => {
     state.showFilters = !state.showFilters;
+    state.filterSearch = "";
     render();
   });
+
+  document.querySelectorAll("[data-close-filters]").forEach((el) => {
+    el.addEventListener("click", () => {
+      state.showFilters = false;
+      state.filterSearch = "";
+      render();
+    });
+  });
+
+  document.querySelector("[data-filter-all]")?.addEventListener("click", () => {
+    ROUTES.forEach((route) => { state.routeVisibility[route.id] = true; });
+    render();
+  });
+
+  document.querySelector("[data-filter-none]")?.addEventListener("click", () => {
+    ROUTES.forEach((route) => { state.routeVisibility[route.id] = false; });
+    render();
+  });
+
+  const filterSearchInput = document.querySelector("#filter-search-input");
+  if (filterSearchInput) {
+    filterSearchInput.focus();
+    filterSearchInput.addEventListener("input", (event) => {
+      state.filterSearch = event.target.value;
+      // Re-render just the route list rows without closing the modal
+      const query = state.filterSearch.toLowerCase();
+      const filtered = ROUTES.filter(
+        (route) =>
+          route.name.toLowerCase().includes(query) ||
+          route.shortName.toLowerCase().includes(query)
+      );
+      const listEl = document.querySelector(".filter-route-list");
+      if (listEl) {
+        listEl.innerHTML = filtered.length
+          ? filtered.map((route) => {
+              const on = state.routeVisibility[route.id];
+              return `
+                <label class="filter-route-row" style="--route:${route.color};">
+                  <input type="checkbox" class="filter-checkbox" data-toggle-route="${route.id}" ${on ? "checked" : ""} />
+                  <span class="filter-route-badge">${route.shortName}</span>
+                  <span class="filter-route-name">${route.name}</span>
+                  <span class="filter-route-meta">${route.stops.length} stops · ${route.durationLabel}</span>
+                </label>
+              `;
+            }).join("")
+          : `<div class="filter-empty">No routes match "<em>${state.filterSearch}</em>"</div>`;
+        // Re-bind checkboxes in the freshly injected rows
+        listEl.querySelectorAll("[data-toggle-route]").forEach((checkbox) => {
+          checkbox.addEventListener("change", () => {
+            state.routeVisibility[checkbox.dataset.toggleRoute] = checkbox.checked;
+            const countEl = document.querySelector(".filter-count");
+            if (countEl) {
+              const visibleCount = Object.values(state.routeVisibility).filter(Boolean).length;
+              countEl.textContent = `${visibleCount} of ${ROUTES.length} shown`;
+            }
+          });
+        });
+      }
+    });
+  }
 
   document.querySelector("[data-sheet-action]")?.addEventListener("click", () => {
     if (state.routingResults.length) {

@@ -4,7 +4,9 @@ Static frontend prototype for a campus bus tracking application with a dark, Pas
 
 ## Run
 
-Open [index.html](/Users/khushimodi/bus-app-prototype/index.html) directly in a browser, or serve the folder with a simple static server.
+Create a local server from the root directory for this project (can be done with Node.js, python, or Live Server extention for VS Code)
+
+Use your prefered browser to view the output of the server at https://localhost:port-number
 
 ## Files
 
