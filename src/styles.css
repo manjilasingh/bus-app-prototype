@@ -668,9 +668,18 @@ button {
   flex-direction: column;
 }
 
+.bottom-sheet.is-dragging {
+  transition: none;
+}
+
 .bottom-sheet.is-hidden {
-  top: 100%;
-  transform: translateY(32px);
+  top: calc(100% - 72px - 44px);
+  transform: none;
+}
+
+.bottom-sheet.is-hidden .sheet-content,
+.bottom-sheet.is-hidden .sheet-header {
+  display: none;
 }
 
 .panel-page {
