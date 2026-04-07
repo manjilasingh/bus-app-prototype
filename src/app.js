@@ -398,6 +398,7 @@ function generateRouteOptions(destination, origin = USER_LOCATION.label) {
     id: `route-opt-${destination}-walk`,
     destination,
     label: 'Walk only',
+    originalLabel: 'Walk only',
     type: 'walk',
     total: TIME_WALK_DIRECT,
     eta: nextEta(TIME_WALK_DIRECT),
@@ -411,10 +412,12 @@ function generateRouteOptions(destination, origin = USER_LOCATION.label) {
   }
 
   const total = Math.round(result.cost);
+  const defaultLabel = result.segments.filter(s => s.type === 'bus').length > 1 ? 'Bus + Transfer' : 'Bus recommended';
   const busOption = {
     id: `route-opt-${destination}-bus`,
     destination,
-    label: result.segments.filter(s => s.type === 'bus').length > 1 ? 'Bus + Transfer' : 'Bus recommended',
+    label: defaultLabel,
+    originalLabel: defaultLabel,
     type: 'bus',
     total,
     eta: nextEta(total),
@@ -1246,6 +1249,7 @@ function renderRouteListCard(route, index) {
       <div class="status-stack">
         <span class="status-pill ${active ? "active" : "inactive"}">${active ? "Active" : "Inactive"}</span>
         <button class="calendar-button ${isOpen ? "is-active" : ""}" data-toggle-timetable="${route.id}" aria-label="View schedule" title="View schedule">🗓</button>
+        <button class="favorite-toggle" data-favorite-route="${route.id}">${state.favoriteRoutes.has(route.id) ? "★" : "☆"}</button>
       </div>
       ${isOpen ? renderTimetablePanel(route, timetable) : ""}
     </article>
@@ -1310,26 +1314,31 @@ function renderSavedPage() {
         ${routeCards
           .map(
             (route) => `
-              <button class="saved-card" data-open-route="${route.id}">
-                <div class="saved-chip" style="--route:${route.color};">${route.shortName}</div>
-                <div class="saved-name">${route.name}</div>
+              <div class="saved-card">
+                <div class="saved-top">
+                  <button class="saved-chip" data-open-route="${route.id}" style="--route:${route.color};">${route.shortName}</button>
+                  <div class="saved-name">${route.name}</div>
+                </div>
                 <div class="saved-meta">${route.durationLabel} • View on map</div>
-              </button>
+                <button class="favorite-toggle" data-favorite-route="${route.id}">${state.favoriteRoutes.has(route.id) ? "★" : "☆"}</button>
+              </div>
             `
           )
           .join("")}
-        ${options.length
-          ? options
+        ${options
               .map(
                 (option) => `
-                  <button class="saved-card soft" data-select-option="${option.id}">
-                    <div class="saved-name">${option.label}</div>
+                  <div class="saved-card soft" data-option-id="${option.id}">
+                    <div class="saved-top">
+                      <div class="saved-name" data-option-display="${option.id}" data-select-option="${option.id}">${option.label}</div>
+                    </div>
                     <div class="saved-meta">${option.total} min • ${option.eta}</div>
-                  </button>
+                    <button class="edit-option-button" data-edit-option="${option.id}" aria-label="Edit route name">✎</button>
+                    <button class="favorite-toggle" data-favorite-option="${option.id}">${state.favoriteRouteOptionIds.has(option.id) ? "★" : "☆"}</button>
+                  </div>
                 `
               )
-              .join("")
-          : `<div class="empty-state">Favorite a suggested route to pin it here.</div>`}
+              .join("")}
       </div>
     </section>
   `;
@@ -1675,10 +1684,68 @@ function bindEvents() {
       const id = button.dataset.favoriteOption;
       if (state.favoriteRouteOptionIds.has(id)) {
         state.favoriteRouteOptionIds.delete(id);
+        // Revert name to original when unfavoriting
+        const option = state.routeOptionCatalog[id];
+        if (option && option.originalLabel) {
+          option.label = option.originalLabel;
+        }
       } else {
         state.favoriteRouteOptionIds.add(id);
       }
       render();
+    });
+  });
+
+  document.querySelectorAll("[data-favorite-route]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const id = button.dataset.favoriteRoute;
+      if (state.favoriteRoutes.has(id)) {
+        state.favoriteRoutes.delete(id);
+      } else {
+        state.favoriteRoutes.add(id);
+      }
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-edit-option]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const optionId = button.dataset.editOption;
+      const nameDisplay = document.querySelector(`[data-option-display="${optionId}"]`);
+      if (!nameDisplay) return;
+
+      const currentName = nameDisplay.textContent;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = currentName;
+      input.className = "option-name-input";
+
+      const saveEdit = () => {
+        const newLabel = input.value.trim();
+        if (newLabel && newLabel !== currentName) {
+          state.routeOptionCatalog[optionId].label = newLabel;
+          render();
+        } else {
+          nameDisplay.style.display = "";
+          input.remove();
+        }
+      };
+
+      input.addEventListener("blur", saveEdit);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") saveEdit();
+        if (e.key === "Escape") {
+          nameDisplay.style.display = "";
+          input.remove();
+        }
+      });
+
+      nameDisplay.style.display = "none";
+      nameDisplay.parentElement.insertBefore(input, nameDisplay);
+      input.focus();
+      input.select();
     });
   });
 
@@ -2013,7 +2080,7 @@ function bindSheetDrag() {
     }
 
     const interactive = event.target.closest(
-      "input, button, select, option, a, [data-select-option], [data-favorite-option]"
+      "input, button, select, option, a, [data-select-option], [data-favorite-option], [data-favorite-route], [data-edit-option]"
     );
     if (interactive && !event.target.closest("[data-sheet-handle]")) {
       return;
