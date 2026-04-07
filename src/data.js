@@ -166,7 +166,7 @@ export const TIMETABLES = {
   r4: null,
   r5: [
     { stopName: "South Hub", times: ["6:30 AM","7:00 AM","7:30 AM","8:00 AM","8:30 AM","9:00 AM","9:30 AM","10:00 AM"] },
-    { stopName: "President's Mansion",        times: ["6:33 AM","7:03 AM","7:33 AM","8:03 AM","8:33 AM","9:03 AM","9:33 AM","10:03 AM"] },
+    { stopName: "President's Mansion",  times: ["6:33 AM","7:03 AM","7:33 AM","8:03 AM","8:33 AM","9:03 AM","9:33 AM","10:03 AM"] },
     { stopName: "The Quad",     times: ["6:37 AM","7:07 AM","7:37 AM","8:07 AM","8:37 AM","9:07 AM","9:37 AM","10:07 AM"] },
     { stopName: "East Village",   times: ["6:43 AM","7:13 AM","7:43 AM","8:13 AM","8:43 AM","9:13 AM","9:43 AM","10:13 AM"] },
     { stopName: "Gorgas Library",   times: ["6:39 AM","7:09 AM","7:39 AM","8:09 AM","8:39 AM","9:09 AM","9:39 AM","10:09 AM"] },

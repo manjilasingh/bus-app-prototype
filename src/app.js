@@ -19,6 +19,7 @@ const state = {
   routeOptionCatalog: initialOptionCatalog,
   showFilters: false,
   filterSearch: "",
+  stopsSearch: "",
   showPlanner: false,
   plannerOriginValue: USER_LOCATION.label,
   plannerOriginQuery: "",
@@ -573,6 +574,13 @@ function renderMapLayer() {
   if (state.screen === "routeDetails") {
     visibleRoutes      = ROUTES.filter(r => r.id === selectedRoute.id);
     highlightedRouteIds = [selectedRoute.id];
+  } else if (state.screen === "journeyDetails") {
+    // Show all routes but highlight every route in the active journey
+    const journeyRouteIds = journey
+      ? journey.steps.filter(s => s.type === "bus-segment").map(s => s.route.id)
+      : [selectedRoute.id];
+    visibleRoutes       = ROUTES.filter(r => state.routeVisibility[r.id]);
+    highlightedRouteIds = journeyRouteIds;
   } else if (journey) {
     // Only show routes that appear in the journey as bus segments; dim everything else
     const journeyRouteIds = journey.steps
@@ -704,8 +712,16 @@ function renderScreenOverlay() {
     return renderRoutesPage();
   }
 
+  if (state.screen === "stops") {
+    return renderStopsPage();
+  }
+
   if (state.screen === "routeDetails") {
     return renderRouteDetailsSheet();
+  }
+
+  if (state.screen === "journeyDetails") {
+    return renderJourneyDetailsSheet();
   }
 
   return renderHomeSheet();
@@ -983,6 +999,214 @@ function renderRouteDetailsSheet() {
     </section>
   `;
 }
+
+// Renders a multi-leg journey detail sheet showing each bus leg in sequence,
+// with its stops, current bus position, and ETAs.
+function renderJourneyDetailsSheet() {
+  const option = getRouteOption(state.selectedRouteOptionId);
+  if (!option) return renderHomeSheet();
+
+  const busSegs = option.segments.filter(s => s.type === "bus");
+
+  const legsHtml = busSegs.map((seg, legIdx) => {
+    const route = ROUTES.find(r => r.id === seg.routeId);
+    if (!route) return "";
+
+    const boardStop  = route.stops.find(s => s.id === seg.boardStopId);
+    const alightStop = route.stops.find(s => s.id === seg.alightStopId);
+    const boardIdx   = route.stops.indexOf(boardStop);
+    const alightIdx  = route.stops.indexOf(alightStop);
+
+    // Collect the ridden stops in order (shortest arc on a loop)
+    const n = route.stops.length;
+    let riddenStops;
+    if (!route.loop || boardIdx === alightIdx) {
+      const lo = Math.min(boardIdx, alightIdx);
+      const hi = Math.max(boardIdx, alightIdx);
+      riddenStops = route.stops.slice(lo, hi + 1);
+    } else {
+      const fwdSteps = (alightIdx - boardIdx + n) % n;
+      const bwdSteps = (boardIdx - alightIdx + n) % n;
+      riddenStops = [];
+      if (fwdSteps <= bwdSteps) {
+        for (let k = 0; k <= fwdSteps; k++) riddenStops.push(route.stops[(boardIdx + k) % n]);
+      } else {
+        for (let k = 0; k <= bwdSteps; k++) riddenStops.push(route.stops[(boardIdx - k + n) % n]);
+      }
+    }
+
+    const busStopIndex = getCurrentStopIndex(route);
+
+    return `
+      <div class="journey-leg" style="--route:${route.color};">
+        <div class="journey-leg-header">
+          <div class="route-chip" style="--route:${route.color};">${route.shortName}</div>
+          <div class="journey-leg-title">${route.name}</div>
+          <div class="journey-leg-eta">${busStopIndex.nextEta} away</div>
+        </div>
+        <p class="status-copy" style="margin:6px 0 10px;">Bus near ${busStopIndex.currentStop.name}</p>
+        <div class="stop-list">
+          ${riddenStops.map((stop) => {
+            const stopIdx = route.stops.indexOf(stop);
+            const status  = getStopStatus(route, stopIdx);
+            const isBoard  = stop.id === seg.boardStopId;
+            const isAlight = stop.id === seg.alightStopId;
+            return `
+              <div class="stop-row ${status.variant === "current" ? "is-bus-location" : ""}">
+                <div class="stop-icon ${status.variant}"></div>
+                <div class="stop-copy">
+                  <div class="stop-name">
+                    ${stop.name}
+                    ${isBoard  ? '<span class="stop-tag board-tag">Board</span>'  : ''}
+                    ${isAlight ? '<span class="stop-tag alight-tag">Alight</span>' : ''}
+                  </div>
+                  <div class="stop-status">${status.label}</div>
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+        ${legIdx < busSegs.length - 1 ? '<div class="journey-transfer-divider">🔄 Transfer to next route</div>' : ''}
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <section class="bottom-sheet route-details-sheet details-open ${state.sheetState === 0 ? "is-hidden" : ""}" data-sheet>
+      <div class="sheet-handle" data-sheet-handle></div>
+      <div class="sheet-header sheet-header--sticky">
+        <button class="ghost-button" data-back-map>←</button>
+        <div>
+          <div class="eyebrow">Journey · ${busSegs.length} routes</div>
+          <h2>to ${option.destination}</h2>
+        </div>
+        <div class="eta-pill">${option.total} min</div>
+      </div>
+      <div class="sheet-content">
+        ${legsHtml}
+      </div>
+    </section>
+  `;
+}
+
+
+// Builds a deduplicated, alphabetically-sorted list of every stop across all
+// routes. Each stop shows a colour-coded chip for every route it belongs to —
+// shared stops therefore display multiple chips side-by-side.
+function buildAllStopsIndex() {
+  // Map from stopId → { stop, routes[] }
+  const index = new Map();
+  for (const route of ROUTES) {
+    for (const stop of route.stops) {
+      if (!index.has(stop.id)) {
+        index.set(stop.id, { stop, routes: [] });
+      }
+      // Avoid duplicating the same route for this stop (shouldn't happen, but guard)
+      const entry = index.get(stop.id);
+      if (!entry.routes.find(r => r.id === route.id)) {
+        entry.routes.push(route);
+      }
+    }
+  }
+  // Sort alphabetically by stop name
+  return Array.from(index.values()).sort((a, b) =>
+    a.stop.name.localeCompare(b.stop.name)
+  );
+}
+
+function renderStopsPage() {
+  const allStops = buildAllStopsIndex();
+  const query    = state.stopsSearch.trim().toLowerCase();
+  const filtered = query
+    ? allStops.filter(({ stop, routes }) =>
+        stop.name.toLowerCase().includes(query) ||
+        routes.some(r => r.name.toLowerCase().includes(query) || r.shortName.toLowerCase().includes(query))
+      )
+    : allStops;
+
+  return `
+    <section class="panel-page stops-page">
+      <div class="page-head stops-head">
+        <button class="ghost-button" data-back-map>←</button>
+        <div class="stops-head-text">
+          <div class="page-title">All Stops</div>
+          <div class="page-subtitle">${allStops.length} stops · ${ROUTES.length} routes</div>
+        </div>
+      </div>
+      <div class="stops-search-wrap">
+        <input
+          id="stops-search-input"
+          class="stops-search-input"
+          placeholder="Search stops or routes…"
+          value="${state.stopsSearch}"
+          autocomplete="off"
+        />
+        ${state.stopsSearch ? `<button class="stops-search-clear" data-clear-stops-search>✕</button>` : ""}
+      </div>
+      <div class="stops-list-scroll" data-stops-list>
+        ${renderStopsListContent(filtered, query)}
+      </div>
+    </section>
+  `;
+}
+
+function renderStopsListContent(entries, query = "") {
+  if (!entries.length) {
+    return `<div class="stops-empty">No stops match "<em>${query}</em>"</div>`;
+  }
+
+  // When searching, show a flat list with no section headers (order is already alpha)
+  if (query) {
+    return entries.map(({ stop, routes }) => renderStopRow(stop, routes)).join("");
+  }
+
+  // Browsing mode: group by first letter with sticky section headers
+  const sections = [];
+  let currentLetter = null;
+  for (const entry of entries) {
+    const letter = entry.stop.name[0].toUpperCase();
+    if (letter !== currentLetter) {
+      currentLetter = letter;
+      sections.push({ letter, entries: [] });
+    }
+    sections[sections.length - 1].entries.push(entry);
+  }
+
+  return sections.map(section => `
+    <div class="stops-section-letter">${section.letter}</div>
+    ${section.entries.map(({ stop, routes }) => renderStopRow(stop, routes)).join("")}
+  `).join("");
+}
+
+function renderStopRow(stop, routes) {
+  const isShared  = routes.length > 1;
+  const chipsHtml = routes.map(r =>
+    `<span class="stop-route-chip" style="--route:${r.color}; --glow:${r.glow};">${r.shortName}</span>`
+  ).join("");
+  const dotStyle  = isShared ? buildSharedStopGradient(routes) : `background:${routes[0].color};`;
+  return `
+    <button class="stops-list-row" data-open-route="${routes[0].id}">
+      <div class="stops-list-dot" style="${dotStyle}"></div>
+      <div class="stops-list-copy">
+        <div class="stops-list-name">${stop.name}</div>
+        <div class="stops-list-chips">${chipsHtml}</div>
+      </div>
+      <span class="chevron">›</span>
+    </button>
+  `;
+}
+
+// Returns an inline style string for a conic-gradient dot
+// that shows all route colours in equal segments.
+function buildSharedStopGradient(routes) {
+  const n    = routes.length;
+  const step = 360 / n;
+  const stops = routes.map((r, i) =>
+    `${r.color} ${i * step}deg ${(i + 1) * step}deg`
+  ).join(', ');
+  return `background: conic-gradient(${stops});`;
+}
+
 
 function renderRoutesPage() {
   return `
@@ -1493,19 +1717,32 @@ function bindEvents() {
   });
 
   document.querySelector("[data-show-stops]")?.addEventListener("click", () => {
-    openRouteDetails("r1", "map");
+    state.screen = "stops";
     render();
   });
 
   document.querySelector("[data-apply-option]")?.addEventListener("click", () => {
     const option = getRouteOption(state.selectedRouteOptionId);
-    const routeId = option?.segments.find((segment) => segment.routeId)?.routeId ?? "r1";
-    state.favoriteRoutes.add(routeId);
-    openRouteDetails(routeId, "map");
+    if (!option) return;
+    const busSegs = option.segments.filter(s => s.type === "bus");
+    // Favourite all bus routes in this journey
+    busSegs.forEach(s => state.favoriteRoutes.add(s.routeId));
+    if (busSegs.length > 1) {
+      // Multi-leg journey: open the journey detail view
+      state.screen = "journeyDetails";
+      state.sheetState = 3;
+    } else {
+      // Single-leg: open the single route detail sheet as before
+      const routeId = busSegs[0]?.routeId ?? "r1";
+      openRouteDetails(routeId, "map");
+    }
     render();
   });
 
   document.querySelector("[data-back-map]")?.addEventListener("click", () => {
+    if (state.screen === "stops") {
+      state.stopsSearch = "";
+    }
     if (state.screen === "routeDetails") {
       state.screen = state.routeDetailsBackScreen;
       if (state.screen === "map") {
@@ -1586,6 +1823,56 @@ function bindEvents() {
       stopId: stop.id,
       message: `${route.name} arriving at ${stop.name} in ${state.alertForm.timeRange.split("-")[0]} minutes`
     });
+    render();
+  });
+
+  // Stops page search
+  const stopsSearchInput = document.querySelector("#stops-search-input");
+  if (stopsSearchInput) {
+    stopsSearchInput.focus();
+    stopsSearchInput.addEventListener("input", (event) => {
+      state.stopsSearch = event.target.value;
+      const query    = state.stopsSearch.trim().toLowerCase();
+      const allStops = buildAllStopsIndex();
+      const filtered = query
+        ? allStops.filter(({ stop, routes }) =>
+            stop.name.toLowerCase().includes(query) ||
+            routes.some(r => r.name.toLowerCase().includes(query) || r.shortName.toLowerCase().includes(query))
+          )
+        : allStops;
+      // Surgically update the list without re-rendering the whole page
+      const listEl = document.querySelector("[data-stops-list]");
+      if (listEl) {
+        listEl.innerHTML = renderStopsListContent(filtered, query);
+        // Re-bind open-route events on the new rows
+        listEl.querySelectorAll("[data-open-route]").forEach(btn => {
+          btn.addEventListener("click", () => {
+            openRouteDetails(btn.dataset.openRoute, "stops");
+            render();
+          });
+        });
+      }
+      // Show/hide clear button without re-render
+      const existingClear = document.querySelector("[data-clear-stops-search]");
+      const wrap = document.querySelector(".stops-search-wrap");
+      if (query && !existingClear && wrap) {
+        const clearBtn = document.createElement("button");
+        clearBtn.className = "stops-search-clear";
+        clearBtn.dataset.clearStopsSearch = "";
+        clearBtn.textContent = "✕";
+        clearBtn.addEventListener("click", () => {
+          state.stopsSearch = "";
+          render();
+        });
+        wrap.appendChild(clearBtn);
+      } else if (!query && existingClear) {
+        existingClear.remove();
+      }
+    });
+  }
+
+  document.querySelector("[data-clear-stops-search]")?.addEventListener("click", () => {
+    state.stopsSearch = "";
     render();
   });
 
