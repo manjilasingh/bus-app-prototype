@@ -1342,7 +1342,97 @@ h2,
 }
 
 .alert-feed {
+  display: grid;
+  gap: 12px;
   padding: 0 16px 8px;
+}
+
+.compact-button {
+  width: auto;
+  min-width: 88px;
+  margin-top: 0;
+  padding: 0 18px;
+}
+
+.alert-card {
+  display: grid;
+  gap: 14px;
+}
+
+.alert-card.is-disabled {
+  opacity: 0.72;
+}
+
+.alert-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.alert-card-title {
+  font-size: 0.94rem;
+  font-weight: 800;
+  color: white;
+}
+
+.alert-card-message {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.76);
+  line-height: 1.45;
+}
+
+.alert-status {
+  flex: 0 0 auto;
+  min-width: 52px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  text-align: center;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.alert-status.is-enabled {
+  background: rgba(57, 217, 138, 0.16);
+  color: #98f2be;
+}
+
+.alert-status.is-disabled {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.alert-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.alert-card-meta span {
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.76rem;
+}
+
+.alert-card-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.ghost-action-button {
+  flex: 1;
+  min-height: 44px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.07);
+  color: white;
+  font-weight: 700;
+}
+
+.danger-button {
+  background: rgba(255, 95, 109, 0.12);
+  color: #ff9aa3;
 }
 
 .nav-bar {

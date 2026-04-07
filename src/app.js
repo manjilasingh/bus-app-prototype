@@ -31,9 +31,13 @@ const state = {
       id: "a1",
       routeId: "r5",
       stopId: "r5s2",
-      message: "Red Line arriving at Law School in 2 minutes"
+      timeRange: "0-5 min",
+      days: ["Mon", "Wed", "Fri"],
+      enabled: true,
+      message: "Red Line arriving at Commons in 0 minutes"
     }
   ],
+  alertsView: "list",
   alertForm: {
     routeId: "r1",
     stopId: "r1s1",
@@ -1332,14 +1336,44 @@ function renderSavedPage() {
 }
 
 function renderAlertsPage() {
+  if (state.alertsView === "create") {
+    return renderAlertCreatePage();
+  }
+
+  return renderAlertsListPage();
+}
+
+function renderAlertsListPage() {
+  return `
+    <section class="panel-page alerts-page">
+      <div class="page-head">
+        <div>
+          <div class="page-title">Notifications</div>
+          <div class="page-subtitle">View, pause, or remove saved bus alerts</div>
+        </div>
+        <button class="select-route-button compact-button" data-open-alert-create>Add</button>
+      </div>
+      <div class="panel-scroll">
+        <div class="alert-feed">
+          ${state.alerts.length
+            ? state.alerts.map((alert) => renderAlertCard(alert)).join("")
+            : `<div class="empty-state">No notifications yet. Add one to start tracking arrivals.</div>`}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderAlertCreatePage() {
   const selectedRoute = ROUTES.find((route) => route.id === state.alertForm.routeId) ?? ROUTES[0];
   const stops = selectedRoute.stops;
 
   return `
     <section class="panel-page alerts-page">
       <div class="page-head">
+        <button class="ghost-button" data-close-alert-create>←</button>
         <div>
-          <div class="page-title">Notifications</div>
+          <div class="page-title">Add Notification</div>
           <div class="page-subtitle">Create simulated bus arrival alerts</div>
         </div>
       </div>
@@ -1371,11 +1405,41 @@ function renderAlertsPage() {
           </fieldset>
           <button class="select-route-button" data-create-alert>Create Alert</button>
         </div>
-        <div class="alert-feed">
-          ${state.alerts.map((alert) => `<div class="alert-card">${alert.message}</div>`).join("")}
-        </div>
       </div>
     </section>
+  `;
+}
+
+function renderAlertCard(alert) {
+  const route = ROUTES.find((item) => item.id === alert.routeId);
+  const stop = route?.stops.find((item) => item.id === alert.stopId);
+  const daysLabel = alert.days?.length ? alert.days.join(", ") : "No days selected";
+
+  return `
+    <article class="alert-card ${alert.enabled ? "" : "is-disabled"}">
+      <div class="alert-card-top">
+        <div>
+          <div class="alert-card-title">${route?.name ?? "Route alert"}</div>
+          <div class="alert-card-message">${alert.message}</div>
+        </div>
+        <span class="alert-status ${alert.enabled ? "is-enabled" : "is-disabled"}">
+          ${alert.enabled ? "On" : "Off"}
+        </span>
+      </div>
+      <div class="alert-card-meta">
+        <span>${stop?.name ?? "Unknown stop"}</span>
+        <span>${alert.timeRange}</span>
+        <span>${daysLabel}</span>
+      </div>
+      <div class="alert-card-actions">
+        <button class="ghost-action-button" data-toggle-alert="${alert.id}">
+          ${alert.enabled ? "Turn Off" : "Turn On"}
+        </button>
+        <button class="ghost-action-button danger-button" data-delete-alert="${alert.id}">
+          Delete
+        </button>
+      </div>
+    </article>
   `;
 }
 
@@ -1558,6 +1622,9 @@ function bindEvents() {
         }
       } else {
         state.screen = targetScreen;
+        if (targetScreen === "alerts") {
+          state.alertsView = "list";
+        }
       }
       render();
     });
@@ -1821,9 +1888,41 @@ function bindEvents() {
       id: `${route.id}-${stop.id}-${Date.now()}`,
       routeId: route.id,
       stopId: stop.id,
+      timeRange: state.alertForm.timeRange,
+      days: [...state.alertForm.days],
+      enabled: true,
       message: `${route.name} arriving at ${stop.name} in ${state.alertForm.timeRange.split("-")[0]} minutes`
     });
+    state.alertsView = "list";
     render();
+  });
+
+  document.querySelector("[data-open-alert-create]")?.addEventListener("click", () => {
+    state.alertsView = "create";
+    render();
+  });
+
+  document.querySelector("[data-close-alert-create]")?.addEventListener("click", () => {
+    state.alertsView = "list";
+    render();
+  });
+
+  document.querySelectorAll("[data-toggle-alert]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.alerts = state.alerts.map((alert) =>
+        alert.id === button.dataset.toggleAlert
+          ? { ...alert, enabled: !alert.enabled }
+          : alert
+      );
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-delete-alert]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.alerts = state.alerts.filter((alert) => alert.id !== button.dataset.deleteAlert);
+      render();
+    });
   });
 
   // Stops page search
