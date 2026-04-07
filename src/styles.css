@@ -1405,3 +1405,223 @@ h2,
     border-radius: 0;
   }
 }
+/* ── Journey detail sheet ──────────────────────────────────── */
+
+.journey-leg {
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.journey-leg:last-child {
+  border-bottom: none;
+}
+
+.journey-leg-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.journey-leg-title {
+  font-weight: 800;
+  font-size: 1rem;
+  flex: 1;
+}
+
+.journey-leg-eta {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.journey-transfer-divider {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: center;
+}
+
+.stop-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 999px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.board-tag {
+  background: rgba(57, 217, 138, 0.18);
+  color: #79edb0;
+  border: 1px solid rgba(57, 217, 138, 0.3);
+}
+
+.alight-tag {
+  background: rgba(255, 95, 109, 0.18);
+  color: #ff9aa2;
+  border: 1px solid rgba(255, 95, 109, 0.3);
+}
+
+/* ── All Stops page ────────────────────────────────────────── */
+
+.stops-page {
+  top: 88px;
+  bottom: 72px;
+}
+
+.stops-head {
+  background: linear-gradient(135deg, rgba(255, 138, 61, 0.18), rgba(255, 138, 61, 0.06));
+}
+
+.stops-search-wrap {
+  position: relative;
+  flex-shrink: 0;
+  padding: 0 16px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+ 
+.stops-search-input {
+  flex: 1;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+  padding: 0 40px 0 14px;
+  font-size: 0.92rem;
+  outline: none;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+ 
+.stops-search-input::placeholder {
+  color: var(--muted);
+}
+ 
+.stops-search-input:focus {
+  border-color: rgba(255, 138, 61, 0.45);
+  background: rgba(255, 255, 255, 0.1);
+}
+ 
+.stops-search-clear {
+  position: absolute;
+  right: 24px;
+  top: 50%;
+  transform: translateY(-60%);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--muted);
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+ 
+.stops-search-clear:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--text);
+}
+ 
+.stops-empty {
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.stops-list-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 0 24px;
+}
+
+.stops-section-letter {
+  padding: 10px 20px 4px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: rgba(9, 18, 31, 0.6);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.stops-list-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 20px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background 140ms ease;
+}
+
+.stops-list-row:hover,
+.stops-list-row:active {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.stops-list-dot {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.stops-list-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.stops-list-name {
+  font-size: 0.92rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stops-list-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.stop-route-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--route) 22%, rgba(255,255,255,0.06));
+  color: color-mix(in srgb, var(--route) 80%, white 20%);
+  border: 1px solid color-mix(in srgb, var(--route) 40%, transparent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--glow, var(--route)) 35%, transparent);
+}
