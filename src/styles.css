@@ -760,9 +760,18 @@ button {
   flex-direction: column;
 }
 
+.bottom-sheet.is-dragging {
+  transition: none;
+}
+
 .bottom-sheet.is-hidden {
-  top: 100%;
-  transform: translateY(32px);
+  top: calc(100% - 72px - 44px);
+  transform: none;
+}
+
+.bottom-sheet.is-hidden .sheet-content,
+.bottom-sheet.is-hidden .sheet-header {
+  display: none;
 }
 
 .panel-page {
@@ -971,10 +980,15 @@ h2,
 
 .recent-list,
 .route-option-list,
-.saved-grid,
 .route-list-page,
 .alert-feed {
   display: grid;
+  gap: 14px;
+}
+
+.saved-grid {
+  display: flex;
+  flex-direction: column;
   gap: 14px;
 }
 
@@ -1386,6 +1400,55 @@ h2,
 .saved-card {
   display: grid;
   gap: 10px;
+  position: relative;
+  height: 140px;
+}
+
+.saved-card .favorite-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+}
+
+.edit-option-button {
+  position: absolute;
+  top: 10px;
+  right: 54px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.85rem;
+  cursor: pointer;
+  border: none;
+  transition: background 140ms ease, color 140ms ease;
+  z-index: 1;
+}
+
+.edit-option-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: white;
+}
+
+.option-name-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(125, 182, 255, 0.45);
+  border-radius: 8px;
+  color: white;
+  padding: 6px 8px;
+  font-size: 1rem;
+  font-weight: 800;
+  outline: none;
+}
+
+.saved-top {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding-right: 90px;
 }
 
 .empty-state,
@@ -1413,12 +1476,23 @@ h2,
 }
 
 .alert-form select {
-  height: 52px;
-  border-radius: 16px;
+  height: 54px;
+  border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.05);
   color: white;
-  padding: 0 14px;
+  padding: 0 16px;
+  outline: none;
+}
+
+.alert-form select:focus {
+  border-color: rgba(125, 182, 255, 0.45);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.alert-form select option {
+  background: rgba(9, 19, 31, 0.95);
+  color: white;
 }
 
 .day-row {

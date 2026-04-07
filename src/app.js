@@ -1,7 +1,9 @@
 import { BUILDINGS, BUILDING_LOCATIONS, ROUTES, TIMETABLES, USER_LOCATION,
          TIME_WALK_TO_STOP, TIME_BUS_PER_STOP, TIME_WALK_DIRECT } from "./data.js";
 
-const sheetHeights = ["0vh", "16vh", "42vh", "74vh"];
+const sheetHeightsVh = [0, 16, 42, 74];
+const sheetHeights = sheetHeightsVh.map((height) => `${height}vh`);
+const collapsedSheetPeekPx = 44;
 const WALK_RADIUS  = 22; // map-unit radius within which a stop is "walkable"
 const initialOptionCatalog = Object.fromEntries(
   generateRouteOptions("Student Recreation Center").map((option) => [option.id, option])
@@ -10,6 +12,7 @@ const initialOptionCatalog = Object.fromEntries(
 const state = {
   screen: "map",
   sheetState: 2,
+  sheetHeightVh: sheetHeightsVh[2],
   routeVisibility: Object.fromEntries(ROUTES.map((route) => [route.id, true])),
   selectedRouteId: "r5",
   selectedRouteOptionId: null,
@@ -59,7 +62,39 @@ function init() {
 }
 
 function attachGlobalStyles() {
-  document.documentElement.style.setProperty("--sheet-height", sheetHeights[state.sheetState]);
+  setSheetHeight(state.sheetHeightVh);
+}
+
+function setSheetHeight(vh) {
+  document.documentElement.style.setProperty("--sheet-height", `${vh}vh`);
+}
+
+function setSheetPreset(index) {
+  state.sheetState = index;
+  state.sheetHeightVh = index === 0 ? getCollapsedSheetHeightVh() : sheetHeightsVh[index];
+}
+
+function isSheetCollapsed() {
+  return state.sheetHeightVh <= getCollapsedSheetHeightVh() + 0.5;
+}
+
+function getNearestSheetState(heightVh) {
+  let nearestIndex = 0;
+  let nearestDistance = Infinity;
+
+  sheetHeightsVh.forEach((candidateHeight, index) => {
+    const distance = Math.abs(candidateHeight - heightVh);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  });
+
+  return nearestIndex;
+}
+
+function getCollapsedSheetHeightVh() {
+  return (collapsedSheetPeekPx / window.innerHeight) * 100;
 }
 
 function bindSimulation() {
@@ -398,6 +433,7 @@ function generateRouteOptions(destination, origin = USER_LOCATION.label) {
     id: `route-opt-${destination}-walk`,
     destination,
     label: 'Walk only',
+    originalLabel: 'Walk only',
     type: 'walk',
     total: TIME_WALK_DIRECT,
     eta: nextEta(TIME_WALK_DIRECT),
@@ -411,10 +447,12 @@ function generateRouteOptions(destination, origin = USER_LOCATION.label) {
   }
 
   const total = Math.round(result.cost);
+  const defaultLabel = result.segments.filter(s => s.type === 'bus').length > 1 ? 'Bus + Transfer' : 'Bus recommended';
   const busOption = {
     id: `route-opt-${destination}-bus`,
     destination,
-    label: result.segments.filter(s => s.type === 'bus').length > 1 ? 'Bus + Transfer' : 'Bus recommended',
+    label: defaultLabel,
+    originalLabel: defaultLabel,
     type: 'bus',
     total,
     eta: nextEta(total),
@@ -455,7 +493,7 @@ function getSelectedRoute() {
 }
 
 function render() {
-  document.documentElement.style.setProperty("--sheet-height", sheetHeights[state.sheetState]);
+  setSheetHeight(state.sheetHeightVh);
   app.innerHTML = `
     <div class="shell">
       <div class="screen stage">
@@ -750,7 +788,7 @@ function renderHomeSheet() {
       </div>
     </div>
     ${renderFilterModal()}
-    <section class="bottom-sheet ${state.sheetState === 0 ? "is-hidden" : ""}" data-sheet>
+    <section class="bottom-sheet ${isSheetCollapsed() ? "is-hidden" : ""}" data-sheet>
       <div class="sheet-handle" data-sheet-handle></div>
       <div class="sheet-content">
         <div class="sheet-header">
@@ -971,7 +1009,7 @@ function renderRouteDetailsSheet() {
   const busStopIndex = getCurrentStopIndex(route);
 
   return `
-    <section class="bottom-sheet route-details-sheet details-open ${state.sheetState === 0 ? "is-hidden" : ""}" data-sheet>
+    <section class="bottom-sheet route-details-sheet details-open ${isSheetCollapsed() ? "is-hidden" : ""}" data-sheet>
       <div class="sheet-handle" data-sheet-handle></div>
       <div class="sheet-header sheet-header--sticky">
         <button class="ghost-button" data-back-map>←</button>
@@ -1076,7 +1114,7 @@ function renderJourneyDetailsSheet() {
   }).join("");
 
   return `
-    <section class="bottom-sheet route-details-sheet details-open ${state.sheetState === 0 ? "is-hidden" : ""}" data-sheet>
+    <section class="bottom-sheet route-details-sheet details-open ${isSheetCollapsed() ? "is-hidden" : ""}" data-sheet>
       <div class="sheet-handle" data-sheet-handle></div>
       <div class="sheet-header sheet-header--sticky">
         <button class="ghost-button" data-back-map>←</button>
@@ -1248,6 +1286,7 @@ function renderRouteListCard(route, index) {
         <button class="calendar-button ${isOpen ? "is-active" : ""}" data-toggle-timetable="${route.id}" aria-label="View schedule" title="View schedule">
           <span class="icon icon-calendar" aria-hidden="true"></span>
         </button>
+        <button class="favorite-toggle" data-favorite-route="${route.id}">${state.favoriteRoutes.has(route.id) ? "★" : "☆"}</button>
       </div>
       ${isOpen ? renderTimetablePanel(route, timetable) : ""}
     </article>
@@ -1312,26 +1351,31 @@ function renderSavedPage() {
         ${routeCards
           .map(
             (route) => `
-              <button class="saved-card" data-open-route="${route.id}">
-                <div class="saved-chip" style="--route:${route.color};">${route.shortName}</div>
-                <div class="saved-name">${route.name}</div>
+              <div class="saved-card">
+                <div class="saved-top">
+                  <button class="saved-chip" data-open-route="${route.id}" style="--route:${route.color};">${route.shortName}</button>
+                  <div class="saved-name">${route.name}</div>
+                </div>
                 <div class="saved-meta">${route.durationLabel} • View on map</div>
-              </button>
+                <button class="favorite-toggle" data-favorite-route="${route.id}">${state.favoriteRoutes.has(route.id) ? "★" : "☆"}</button>
+              </div>
             `
           )
           .join("")}
-        ${options.length
-          ? options
+        ${options
               .map(
                 (option) => `
-                  <button class="saved-card soft" data-select-option="${option.id}">
-                    <div class="saved-name">${option.label}</div>
+                  <div class="saved-card soft" data-option-id="${option.id}">
+                    <div class="saved-top">
+                      <div class="saved-name" data-option-display="${option.id}" data-select-option="${option.id}">${option.label}</div>
+                    </div>
                     <div class="saved-meta">${option.total} min • ${option.eta}</div>
-                  </button>
+                    <button class="edit-option-button" data-edit-option="${option.id}" aria-label="Edit route name">✎</button>
+                    <button class="favorite-toggle" data-favorite-option="${option.id}">${state.favoriteRouteOptionIds.has(option.id) ? "★" : "☆"}</button>
+                  </div>
                 `
               )
-              .join("")
-          : `<div class="empty-state">Favorite a suggested route to pin it here.</div>`}
+              .join("")}
       </div>
     </section>
   `;
@@ -1376,7 +1420,6 @@ function renderAlertCreatePage() {
         <button class="ghost-button" data-close-alert-create>←</button>
         <div>
           <div class="page-title">Add Notification</div>
-          <div class="page-subtitle">Create simulated bus arrival alerts</div>
         </div>
       </div>
       <div class="panel-scroll">
@@ -1615,11 +1658,15 @@ function bindEvents() {
 
       if (targetScreen === "map") {
         if (state.screen === "map") {
-          state.sheetState = state.sheetState === 0 ? 2 : 0;
+          if (isSheetCollapsed()) {
+            setSheetPreset(2);
+          } else {
+            setSheetPreset(0);
+          }
         } else {
           state.screen = "map";
-          if (state.sheetState === 0) {
-            state.sheetState = 2;
+          if (isSheetCollapsed()) {
+            setSheetPreset(2);
           }
         }
       } else {
@@ -1658,7 +1705,7 @@ function bindEvents() {
           state.routeOptionCatalog[item.id] = item;
         });
         state.screen = "map";
-        state.sheetState = 3;
+        setSheetPreset(3);
       }
       render();
     });
@@ -1678,10 +1725,68 @@ function bindEvents() {
       const id = button.dataset.favoriteOption;
       if (state.favoriteRouteOptionIds.has(id)) {
         state.favoriteRouteOptionIds.delete(id);
+        // Revert name to original when unfavoriting
+        const option = state.routeOptionCatalog[id];
+        if (option && option.originalLabel) {
+          option.label = option.originalLabel;
+        }
       } else {
         state.favoriteRouteOptionIds.add(id);
       }
       render();
+    });
+  });
+
+  document.querySelectorAll("[data-favorite-route]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const id = button.dataset.favoriteRoute;
+      if (state.favoriteRoutes.has(id)) {
+        state.favoriteRoutes.delete(id);
+      } else {
+        state.favoriteRoutes.add(id);
+      }
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-edit-option]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const optionId = button.dataset.editOption;
+      const nameDisplay = document.querySelector(`[data-option-display="${optionId}"]`);
+      if (!nameDisplay) return;
+
+      const currentName = nameDisplay.textContent;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = currentName;
+      input.className = "option-name-input";
+
+      const saveEdit = () => {
+        const newLabel = input.value.trim();
+        if (newLabel && newLabel !== currentName) {
+          state.routeOptionCatalog[optionId].label = newLabel;
+          render();
+        } else {
+          nameDisplay.style.display = "";
+          input.remove();
+        }
+      };
+
+      input.addEventListener("blur", saveEdit);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") saveEdit();
+        if (e.key === "Escape") {
+          nameDisplay.style.display = "";
+          input.remove();
+        }
+      });
+
+      nameDisplay.style.display = "none";
+      nameDisplay.parentElement.insertBefore(input, nameDisplay);
+      input.focus();
+      input.select();
     });
   });
 
@@ -1771,7 +1876,7 @@ function bindEvents() {
       state.showPlanner = false;
       state.routingResults = [];
       state.selectedRouteOptionId = null;
-      state.sheetState = 2;
+      setSheetPreset(2);
     } else {
       state.screen = "routes";
     }
@@ -1799,7 +1904,7 @@ function bindEvents() {
     if (busSegs.length > 1) {
       // Multi-leg journey: open the journey detail view
       state.screen = "journeyDetails";
-      state.sheetState = 3;
+      setSheetPreset(3);
     } else {
       // Single-leg: open the single route detail sheet as before
       const routeId = busSegs[0]?.routeId ?? "r1";
@@ -1815,11 +1920,11 @@ function bindEvents() {
     if (state.screen === "routeDetails") {
       state.screen = state.routeDetailsBackScreen;
       if (state.screen === "map") {
-        state.sheetState = 2;
+        setSheetPreset(2);
       }
     } else {
       state.screen = "map";
-      state.sheetState = 2;
+      setSheetPreset(2);
     }
     render();
   });
@@ -1988,8 +2093,14 @@ function bindSheetDrag() {
   }
 
   let startY = 0;
-  let startState = state.sheetState;
+  let startHeight = state.sheetHeightVh;
   let dragging = false;
+  let currentDragHeight = state.sheetHeightVh;
+
+  const syncSheetPresentation = (heightVh) => {
+    setSheetHeight(heightVh);
+    sheet.classList.toggle("is-hidden", heightVh <= getCollapsedSheetHeightVh() + 0.5);
+  };
 
   const onPointerMove = (event) => {
     if (!dragging) {
@@ -1997,13 +2108,21 @@ function bindSheetDrag() {
     }
 
     const delta = startY - event.clientY;
-    const stepDelta = Math.round(delta / 90);
-    state.sheetState = Math.max(0, Math.min(3, startState + stepDelta));
-    document.documentElement.style.setProperty("--sheet-height", sheetHeights[state.sheetState]);
+    const deltaVh = (delta / window.innerHeight) * 100;
+    currentDragHeight = Math.max(getCollapsedSheetHeightVh(), Math.min(sheetHeightsVh.at(-1), startHeight + deltaVh));
+    syncSheetPresentation(currentDragHeight);
   };
 
   const onPointerUp = () => {
+    if (!dragging) {
+      return;
+    }
+
     dragging = false;
+    sheet.classList.remove("is-dragging");
+    state.sheetHeightVh = currentDragHeight;
+    state.sheetState = getNearestSheetState(currentDragHeight);
+    syncSheetPresentation(state.sheetHeightVh);
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
     window.removeEventListener("pointercancel", onPointerUp);
@@ -2016,7 +2135,7 @@ function bindSheetDrag() {
     }
 
     const interactive = event.target.closest(
-      "input, button, select, option, a, [data-select-option], [data-favorite-option]"
+      "input, button, select, option, a, [data-select-option], [data-favorite-option], [data-favorite-route], [data-edit-option]"
     );
     if (interactive && !event.target.closest("[data-sheet-handle]")) {
       return;
@@ -2030,7 +2149,9 @@ function bindSheetDrag() {
 
     dragging = true;
     startY = event.clientY;
-    startState = state.sheetState;
+    startHeight = state.sheetHeightVh;
+    currentDragHeight = state.sheetHeightVh;
+    sheet.classList.add("is-dragging");
     event.currentTarget?.setPointerCapture?.(event.pointerId);
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
@@ -2055,7 +2176,7 @@ function openRouteDetails(routeId, originScreen = state.screen) {
   state.selectedRouteId = routeId;
   state.routeDetailsBackScreen = originScreen === "routeDetails" ? "map" : originScreen;
   state.screen = "routeDetails";
-  state.sheetState = 3;
+  setSheetPreset(3);
 }
 
 function submitDestination(value) {
@@ -2072,7 +2193,7 @@ function submitDestination(value) {
     state.routeOptionCatalog[option.id] = option;
   });
   state.selectedRouteOptionId = state.routingResults[0]?.id ?? null;
-  state.sheetState = 3;
+  setSheetPreset(3);
   render();
 }
 
@@ -2092,7 +2213,7 @@ function submitRouteSearch() {
     state.routeOptionCatalog[option.id] = option;
   });
   state.selectedRouteOptionId = state.routingResults[0]?.id ?? null;
-  state.sheetState = 3;
+  setSheetPreset(3);
   render();
 }
 
