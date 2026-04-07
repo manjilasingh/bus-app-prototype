@@ -18,6 +18,7 @@ const state = {
   selectedRouteOptionId: null,
   activeSearch: "",
   draftSearch: "",
+  topSearchOpen: false,
   routingResults: [],
   routeOptionCatalog: initialOptionCatalog,
   showFilters: false,
@@ -772,7 +773,7 @@ function renderScreenOverlay() {
 function renderHomeSheet() {
   const results = state.routingResults;
   const searchValue = state.draftSearch || state.activeSearch;
-  const suggestions = getBuildingSuggestions(searchValue);
+  const suggestions = getTopSearchSuggestions(searchValue, state.topSearchOpen);
 
   return `
     <div class="top-search-stack">
@@ -783,7 +784,7 @@ function renderHomeSheet() {
         </label>
         <button class="filter-button" data-toggle-filters>☰</button>
       </div>
-      <div class="top-search-suggestions ${(state.showPlanner || !state.draftSearch || !suggestions.length) ? "is-hidden" : ""}" data-top-suggestions>
+      <div class="top-search-suggestions ${(state.showPlanner || !state.topSearchOpen || !suggestions.length) ? "is-hidden" : ""}" data-top-suggestions>
         ${renderTopSearchSuggestionItems(suggestions)}
       </div>
     </div>
@@ -810,6 +811,17 @@ function getBuildingSuggestions(query) {
   const normalized = query.trim().toLowerCase();
   if (!normalized) {
     return [];
+  }
+
+  return BUILDINGS.filter((building) =>
+    building.toLowerCase().startsWith(normalized)
+  ).slice(0, 4);
+}
+
+function getTopSearchSuggestions(query, includeAllWhenEmpty = false) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return includeAllWhenEmpty ? [...BUILDINGS] : [];
   }
 
   return BUILDINGS.filter((building) =>
@@ -854,8 +866,8 @@ function updateTopSearchSuggestions(query) {
     return;
   }
 
-  const suggestions = getBuildingSuggestions(query);
-  const shouldShow = Boolean(query.trim()) && !state.showPlanner && suggestions.length > 0;
+  const suggestions = getTopSearchSuggestions(query, state.topSearchOpen);
+  const shouldShow = state.topSearchOpen && !state.showPlanner && suggestions.length > 0;
 
   if (!shouldShow) {
     listEl.classList.add("is-hidden");
@@ -1555,6 +1567,7 @@ function bindEvents() {
   if (topSearchInput) {
     topSearchInput.addEventListener("input", (event) => {
       state.draftSearch = event.target.value;
+      state.topSearchOpen = true;
       if (!state.draftSearch) {
         const shouldRender = state.showPlanner || state.routingResults.length > 0;
         state.activeSearch = "";
@@ -1575,6 +1588,7 @@ function bindEvents() {
     });
 
     topSearchInput.addEventListener("focus", () => {
+      state.topSearchOpen = true;
       updateTopSearchSuggestions(topSearchInput.value);
     });
 
@@ -2185,6 +2199,7 @@ function submitDestination(value) {
     return;
   }
 
+  state.topSearchOpen = false;
   state.activeSearch = destination;
   state.draftSearch = destination;
   state.showPlanner = true;
