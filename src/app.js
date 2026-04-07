@@ -1,7 +1,9 @@
 import { BUILDINGS, BUILDING_LOCATIONS, ROUTES, TIMETABLES, USER_LOCATION,
          TIME_WALK_TO_STOP, TIME_BUS_PER_STOP, TIME_WALK_DIRECT } from "./data.js";
 
-const sheetHeights = ["0vh", "16vh", "42vh", "74vh"];
+const sheetHeightsVh = [0, 16, 42, 74];
+const sheetHeights = sheetHeightsVh.map((height) => `${height}vh`);
+const collapsedSheetPeekPx = 44;
 const WALK_RADIUS  = 22; // map-unit radius within which a stop is "walkable"
 const initialOptionCatalog = Object.fromEntries(
   generateRouteOptions("Student Recreation Center").map((option) => [option.id, option])
@@ -10,6 +12,7 @@ const initialOptionCatalog = Object.fromEntries(
 const state = {
   screen: "map",
   sheetState: 2,
+  sheetHeightVh: sheetHeightsVh[2],
   routeVisibility: Object.fromEntries(ROUTES.map((route) => [route.id, true])),
   selectedRouteId: "r5",
   selectedRouteOptionId: null,
@@ -59,7 +62,39 @@ function init() {
 }
 
 function attachGlobalStyles() {
-  document.documentElement.style.setProperty("--sheet-height", sheetHeights[state.sheetState]);
+  setSheetHeight(state.sheetHeightVh);
+}
+
+function setSheetHeight(vh) {
+  document.documentElement.style.setProperty("--sheet-height", `${vh}vh`);
+}
+
+function setSheetPreset(index) {
+  state.sheetState = index;
+  state.sheetHeightVh = index === 0 ? getCollapsedSheetHeightVh() : sheetHeightsVh[index];
+}
+
+function isSheetCollapsed() {
+  return state.sheetHeightVh <= getCollapsedSheetHeightVh() + 0.5;
+}
+
+function getNearestSheetState(heightVh) {
+  let nearestIndex = 0;
+  let nearestDistance = Infinity;
+
+  sheetHeightsVh.forEach((candidateHeight, index) => {
+    const distance = Math.abs(candidateHeight - heightVh);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  });
+
+  return nearestIndex;
+}
+
+function getCollapsedSheetHeightVh() {
+  return (collapsedSheetPeekPx / window.innerHeight) * 100;
 }
 
 function bindSimulation() {
@@ -458,7 +493,7 @@ function getSelectedRoute() {
 }
 
 function render() {
-  document.documentElement.style.setProperty("--sheet-height", sheetHeights[state.sheetState]);
+  setSheetHeight(state.sheetHeightVh);
   app.innerHTML = `
     <div class="shell">
       <div class="screen stage">
@@ -753,7 +788,7 @@ function renderHomeSheet() {
       </div>
     </div>
     ${renderFilterModal()}
-    <section class="bottom-sheet ${state.sheetState === 0 ? "is-hidden" : ""}" data-sheet>
+    <section class="bottom-sheet ${isSheetCollapsed() ? "is-hidden" : ""}" data-sheet>
       <div class="sheet-handle" data-sheet-handle></div>
       <div class="sheet-content">
         <div class="sheet-header">
@@ -974,7 +1009,7 @@ function renderRouteDetailsSheet() {
   const busStopIndex = getCurrentStopIndex(route);
 
   return `
-    <section class="bottom-sheet route-details-sheet details-open ${state.sheetState === 0 ? "is-hidden" : ""}" data-sheet>
+    <section class="bottom-sheet route-details-sheet details-open ${isSheetCollapsed() ? "is-hidden" : ""}" data-sheet>
       <div class="sheet-handle" data-sheet-handle></div>
       <div class="sheet-header sheet-header--sticky">
         <button class="ghost-button" data-back-map>←</button>
@@ -1079,7 +1114,7 @@ function renderJourneyDetailsSheet() {
   }).join("");
 
   return `
-    <section class="bottom-sheet route-details-sheet details-open ${state.sheetState === 0 ? "is-hidden" : ""}" data-sheet>
+    <section class="bottom-sheet route-details-sheet details-open ${isSheetCollapsed() ? "is-hidden" : ""}" data-sheet>
       <div class="sheet-handle" data-sheet-handle></div>
       <div class="sheet-header sheet-header--sticky">
         <button class="ghost-button" data-back-map>←</button>
@@ -1621,11 +1656,15 @@ function bindEvents() {
 
       if (targetScreen === "map") {
         if (state.screen === "map") {
-          state.sheetState = state.sheetState === 0 ? 2 : 0;
+          if (isSheetCollapsed()) {
+            setSheetPreset(2);
+          } else {
+            setSheetPreset(0);
+          }
         } else {
           state.screen = "map";
-          if (state.sheetState === 0) {
-            state.sheetState = 2;
+          if (isSheetCollapsed()) {
+            setSheetPreset(2);
           }
         }
       } else {
@@ -1664,7 +1703,7 @@ function bindEvents() {
           state.routeOptionCatalog[item.id] = item;
         });
         state.screen = "map";
-        state.sheetState = 3;
+        setSheetPreset(3);
       }
       render();
     });
@@ -1835,7 +1874,7 @@ function bindEvents() {
       state.showPlanner = false;
       state.routingResults = [];
       state.selectedRouteOptionId = null;
-      state.sheetState = 2;
+      setSheetPreset(2);
     } else {
       state.screen = "routes";
     }
@@ -1863,7 +1902,7 @@ function bindEvents() {
     if (busSegs.length > 1) {
       // Multi-leg journey: open the journey detail view
       state.screen = "journeyDetails";
-      state.sheetState = 3;
+      setSheetPreset(3);
     } else {
       // Single-leg: open the single route detail sheet as before
       const routeId = busSegs[0]?.routeId ?? "r1";
@@ -1879,11 +1918,11 @@ function bindEvents() {
     if (state.screen === "routeDetails") {
       state.screen = state.routeDetailsBackScreen;
       if (state.screen === "map") {
-        state.sheetState = 2;
+        setSheetPreset(2);
       }
     } else {
       state.screen = "map";
-      state.sheetState = 2;
+      setSheetPreset(2);
     }
     render();
   });
@@ -2052,8 +2091,14 @@ function bindSheetDrag() {
   }
 
   let startY = 0;
-  let startState = state.sheetState;
+  let startHeight = state.sheetHeightVh;
   let dragging = false;
+  let currentDragHeight = state.sheetHeightVh;
+
+  const syncSheetPresentation = (heightVh) => {
+    setSheetHeight(heightVh);
+    sheet.classList.toggle("is-hidden", heightVh <= getCollapsedSheetHeightVh() + 0.5);
+  };
 
   const onPointerMove = (event) => {
     if (!dragging) {
@@ -2061,13 +2106,21 @@ function bindSheetDrag() {
     }
 
     const delta = startY - event.clientY;
-    const stepDelta = Math.round(delta / 90);
-    state.sheetState = Math.max(0, Math.min(3, startState + stepDelta));
-    document.documentElement.style.setProperty("--sheet-height", sheetHeights[state.sheetState]);
+    const deltaVh = (delta / window.innerHeight) * 100;
+    currentDragHeight = Math.max(getCollapsedSheetHeightVh(), Math.min(sheetHeightsVh.at(-1), startHeight + deltaVh));
+    syncSheetPresentation(currentDragHeight);
   };
 
   const onPointerUp = () => {
+    if (!dragging) {
+      return;
+    }
+
     dragging = false;
+    sheet.classList.remove("is-dragging");
+    state.sheetHeightVh = currentDragHeight;
+    state.sheetState = getNearestSheetState(currentDragHeight);
+    syncSheetPresentation(state.sheetHeightVh);
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
     window.removeEventListener("pointercancel", onPointerUp);
@@ -2094,7 +2147,9 @@ function bindSheetDrag() {
 
     dragging = true;
     startY = event.clientY;
-    startState = state.sheetState;
+    startHeight = state.sheetHeightVh;
+    currentDragHeight = state.sheetHeightVh;
+    sheet.classList.add("is-dragging");
     event.currentTarget?.setPointerCapture?.(event.pointerId);
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
@@ -2119,7 +2174,7 @@ function openRouteDetails(routeId, originScreen = state.screen) {
   state.selectedRouteId = routeId;
   state.routeDetailsBackScreen = originScreen === "routeDetails" ? "map" : originScreen;
   state.screen = "routeDetails";
-  state.sheetState = 3;
+  setSheetPreset(3);
 }
 
 function submitDestination(value) {
@@ -2136,7 +2191,7 @@ function submitDestination(value) {
     state.routeOptionCatalog[option.id] = option;
   });
   state.selectedRouteOptionId = state.routingResults[0]?.id ?? null;
-  state.sheetState = 3;
+  setSheetPreset(3);
   render();
 }
 
@@ -2156,7 +2211,7 @@ function submitRouteSearch() {
     state.routeOptionCatalog[option.id] = option;
   });
   state.selectedRouteOptionId = state.routingResults[0]?.id ?? null;
-  state.sheetState = 3;
+  setSheetPreset(3);
   render();
 }
 
