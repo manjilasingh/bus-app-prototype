@@ -153,6 +153,41 @@ export const BUILDING_LOCATIONS = {
   "Moody Music Hall" :                 { x: 78, y: 46 }
 };
 
+// ── Real map calibration data ───────────────────────────────
+// These points align the app's campus layout to the real Tuscaloosa area map.
+export const REAL_MAP_CENTER = [33.2122, -87.5422];
+export const REAL_MAP_ZOOM = 15;
+
+export const MAP_CALIBRATION_POINTS = [
+  { x: 18, y: 20, lat: 33.2196, lng: -87.5362 },
+  { x: 10, y: 38, lat: 33.2155, lng: -87.5520 },
+  { x: 18, y: 54, lat: 33.2146, lng: -87.5430 },
+  { x: 50, y: 62, lat: 33.2108, lng: -87.5462 },
+  { x: 48, y: 42, lat: 33.2129, lng: -87.5415 },
+  { x: 34, y: 28, lat: 33.2123, lng: -87.5423 },
+  { x: 71, y: 9, lat: 33.2220, lng: -87.5300 },
+  { x: 58, y: 22, lat: 33.2160, lng: -87.5383 },
+  { x: 64, y: 38, lat: 33.2111, lng: -87.5493 },
+  { x: 58, y: 54, lat: 33.2120, lng: -87.5322 },
+  { x: 78, y: 46, lat: 33.2130, lng: -87.5457 },
+  { x: 82, y: 30, lat: 33.2119, lng: -87.5439 },
+  { x: 17, y: 80, lat: 33.2020, lng: -87.5480 },
+  { x: 32, y: 70, lat: 33.2088, lng: -87.5465 },
+  { x: 84, y: 64, lat: 33.2080, lng: -87.5280 },
+  { x: 62, y: 72, lat: 33.2118, lng: -87.5460 },
+  { x: 76, y: 78, lat: 33.2039, lng: -87.5354 },
+  { x: 30, y: 16, lat: 33.2102, lng: -87.5440 },
+  { x: 46, y: 10, lat: 33.2096, lng: -87.5424 },
+  { x: 90, y: 22, lat: 33.2200, lng: -87.5340 },
+  { x: 92, y: 40, lat: 33.2044, lng: -87.5498 },
+  { x: 50, y: 30, lat: 33.2180, lng: -87.5380 },
+  { x: 7, y: 55, lat: 33.2130, lng: -87.5560 },
+  { x: 45, y: 92, lat: 33.2121, lng: -87.5535 },
+  { x: 90, y: 85, lat: 33.2074, lng: -87.5382 },
+  { x: 92, y: 65, lat: 33.2040, lng: -87.5320 },
+  { x: 22, y: 42, lat: 33.2075, lng: -87.5418 }
+];
+
 // ── Routing time constants (minutes) ─────────────────────────
 export const TIME_WALK_TO_STOP   = 3;
 export const TIME_BUS_PER_STOP   = 2;

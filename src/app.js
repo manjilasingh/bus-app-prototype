@@ -1,4 +1,4 @@
-import { BUILDINGS, BUILDING_LOCATIONS, ROUTES, TIMETABLES, USER_LOCATION,
+import { BUILDINGS, BUILDING_LOCATIONS, MAP_CALIBRATION_POINTS, REAL_MAP_CENTER, REAL_MAP_ZOOM, ROUTES, TIMETABLES, USER_LOCATION,
          TIME_WALK_TO_STOP, TIME_BUS_PER_STOP, TIME_WALK_DIRECT } from "./data.js";
 
 const sheetHeightsVh = [0, 16, 42, 74];
@@ -55,6 +55,13 @@ const state = {
 };
 
 const app = document.querySelector("#app");
+let realMapInstance = null;
+let realMapView = {
+  center: REAL_MAP_CENTER,
+  zoom: REAL_MAP_ZOOM
+};
+const campusProjection = buildCampusProjection(MAP_CALIBRATION_POINTS);
+let leafletLayerState = null;
 
 function init() {
   attachGlobalStyles();
@@ -131,6 +138,8 @@ function bindSimulation() {
 // Surgically updates only the moving bus markers and stop statuses on the map,
 // leaving the rest of the DOM (inputs, scroll position, sheet) completely untouched.
 function updateMapOnly() {
+  updateLeafletBusPositions();
+
   const selectedRoute = getSelectedRoute();
   const journey = state.selectedRouteOptionId
     ? buildJourneyGeometry(getRouteOption(state.selectedRouteOptionId))
@@ -143,20 +152,6 @@ function updateMapOnly() {
     const bus = getBusPosition(route);
     const highlighted = highlightedRouteIds.includes(route.id);
     const dimmed = journey && !highlighted;
-
-    // Move the bus marker (hidden when dimmed)
-    const busEl = document.querySelector(`.bus-marker[data-open-route="${route.id}"]`);
-    if (busEl) {
-      busEl.style.left = `${bus.x}%`;
-      busEl.style.top = `${bus.y}%`;
-      busEl.classList.toggle("pulse", highlighted);
-    }
-
-    // Dim/undim the route SVG
-    const routeSvg = document.querySelector(`.route-svg[data-route-id="${route.id}"]`);
-    if (routeSvg) {
-      routeSvg.classList.toggle("is-dimmed", !!dimmed);
-    }
 
     // Update stop statuses if the route detail sheet is open for this route
     if (state.screen === "routeDetails" && state.selectedRouteId === route.id) {
@@ -210,6 +205,230 @@ function seeded(seed) {
     value ^= value + Math.imul(value ^ (value >>> 7), 61 | value);
     return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+function buildCampusProjection(points) {
+  const latCoefficients = solveAffineCoefficients(
+    points.map((point) => ({ a: point.x, b: point.y, c: 1, value: point.lat }))
+  );
+  const lngCoefficients = solveAffineCoefficients(
+    points.map((point) => ({ a: point.x, b: point.y, c: 1, value: point.lng }))
+  );
+
+  return (point) => ({
+    lat: latCoefficients[0] * point.x + latCoefficients[1] * point.y + latCoefficients[2],
+    lng: lngCoefficients[0] * point.x + lngCoefficients[1] * point.y + lngCoefficients[2]
+  });
+}
+
+function solveAffineCoefficients(points) {
+  const matrix = [
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0]
+  ];
+  const vector = [0, 0, 0];
+
+  points.forEach((point) => {
+    const basis = [point.a, point.b, point.c];
+    for (let row = 0; row < 3; row += 1) {
+      vector[row] += basis[row] * point.value;
+      for (let column = 0; column < 3; column += 1) {
+        matrix[row][column] += basis[row] * basis[column];
+      }
+    }
+  });
+
+  return gaussianSolve3x3(matrix, vector);
+}
+
+function gaussianSolve3x3(matrix, vector) {
+  const augmented = matrix.map((row, index) => [...row, vector[index]]);
+
+  for (let column = 0; column < 3; column += 1) {
+    let pivotRow = column;
+    for (let row = column + 1; row < 3; row += 1) {
+      if (Math.abs(augmented[row][column]) > Math.abs(augmented[pivotRow][column])) {
+        pivotRow = row;
+      }
+    }
+
+    if (pivotRow !== column) {
+      [augmented[column], augmented[pivotRow]] = [augmented[pivotRow], augmented[column]];
+    }
+
+    const pivot = augmented[column][column] || 1e-9;
+    for (let row = column + 1; row < 3; row += 1) {
+      const factor = augmented[row][column] / pivot;
+      for (let current = column; current < 4; current += 1) {
+        augmented[row][current] -= factor * augmented[column][current];
+      }
+    }
+  }
+
+  const solution = [0, 0, 0];
+  for (let row = 2; row >= 0; row -= 1) {
+    let total = augmented[row][3];
+    for (let column = row + 1; column < 3; column += 1) {
+      total -= augmented[row][column] * solution[column];
+    }
+    solution[row] = total / (augmented[row][row] || 1e-9);
+  }
+
+  return solution;
+}
+
+function toLatLng(point) {
+  return campusProjection(point);
+}
+
+function getRouteLatLngs(route) {
+  return route.stops.map((stop) => toLatLng(stop));
+}
+
+function getBusLatLng(route) {
+  const progress = state.busProgress[route.id];
+  const segCount = route.loop ? route.stops.length : route.stops.length - 1;
+  const scaled = progress * segCount;
+  const index = Math.floor(scaled) % route.stops.length;
+  const nextIndex = (index + 1) % route.stops.length;
+  const local = scaled - Math.floor(scaled);
+  const start = toLatLng(route.stops[index]);
+  const end = toLatLng(route.stops[nextIndex]);
+
+  return {
+    lat: start.lat + (end.lat - start.lat) * local,
+    lng: start.lng + (end.lng - start.lng) * local
+  };
+}
+
+function mapPointToContainer(point) {
+  if (!realMapInstance || !window.L) {
+    return { x: 0, y: 0 };
+  }
+
+  return realMapInstance.latLngToContainerPoint([point.lat, point.lng]);
+}
+
+function positionLeafletElement(element, point) {
+  if (!element) {
+    return;
+  }
+
+  const containerPoint = mapPointToContainer(point);
+  element.style.left = `${containerPoint.x}px`;
+  element.style.top = `${containerPoint.y}px`;
+}
+
+function syncRealMapOverlay() {
+  if (!realMapInstance || !window.L) {
+    return;
+  }
+
+  const selectedRoute = getSelectedRoute();
+  const journey = state.selectedRouteOptionId
+    ? buildJourneyGeometry(getRouteOption(state.selectedRouteOptionId))
+    : null;
+  const highlightedRouteIds = journey
+    ? journey.steps.filter((step) => step.type === "bus-segment").map((step) => step.route.id)
+    : [selectedRoute.id];
+
+  ROUTES.forEach((route) => {
+    const highlighted = highlightedRouteIds.includes(route.id);
+    const dimmed = !!journey && !highlighted;
+    const routeSvg = document.querySelector(`.route-svg[data-route-id="${route.id}"]`);
+    const basePolyline = routeSvg?.querySelector(".route-polyline:not(.route-polyline--ridden)");
+    const riddenPolyline = routeSvg?.querySelector(".route-polyline--ridden");
+    const routeLatLngs = getRouteLatLngs(route);
+    const routePoints = routeLatLngs.map((latLng) => {
+      const projected = mapPointToContainer(latLng);
+      return `${projected.x},${projected.y}`;
+    });
+
+    if (route.loop && routeLatLngs.length) {
+      const firstPoint = mapPointToContainer(routeLatLngs[0]);
+      routePoints.push(`${firstPoint.x},${firstPoint.y}`);
+    }
+
+    if (basePolyline) {
+      basePolyline.setAttribute("points", routePoints.join(" "));
+      basePolyline.classList.toggle("is-highlighted", highlighted && !journey);
+      basePolyline.classList.toggle("is-dimmed", dimmed);
+      basePolyline.classList.toggle("is-ridden-base", !!journey);
+    }
+
+    if (riddenPolyline) {
+      const journeyStep = journey?.steps.find((step) => step.type === "bus-segment" && step.route.id === route.id);
+      const riddenPoints = journeyStep
+        ? journeyStep.stops.map((stop) => {
+            const projected = mapPointToContainer(toLatLng(stop));
+            return `${projected.x},${projected.y}`;
+          })
+        : [];
+      riddenPolyline.setAttribute("points", riddenPoints.join(" "));
+      riddenPolyline.style.display = journeyStep ? "" : "none";
+    }
+
+    const busMarker = document.querySelector(`.bus-marker[data-route-id="${route.id}"]`);
+    if (busMarker) {
+      positionLeafletElement(busMarker, getBusLatLng(route));
+      busMarker.classList.toggle("pulse", highlighted);
+      busMarker.style.display = dimmed ? "none" : "";
+    }
+
+    route.stops.forEach((stop, index) => {
+      const stopMarker = document.querySelector(`.stop-marker[data-route-id="${route.id}"][data-stop-id="${stop.id}"]`);
+      if (!stopMarker) {
+        return;
+      }
+
+      positionLeafletElement(stopMarker, toLatLng(stop));
+      stopMarker.style.display = dimmed ? "none" : "";
+      const details = state.screen === "routeDetails" && state.selectedRouteId === route.id;
+      const status = details ? getStopStatus(route, index) : null;
+      stopMarker.classList.toggle("is-current", !!status && status.variant === "current");
+      stopMarker.classList.toggle("is-journey-stop", !!journey?.steps.find((step) => step.type === "bus-segment" && step.route.id === route.id && step.stops.some((journeyStop) => journeyStop.id === stop.id)));
+    });
+  });
+
+  const userMarker = document.querySelector("[data-user-marker]");
+  if (userMarker) {
+    positionLeafletElement(userMarker, toLatLng(USER_LOCATION));
+  }
+
+  const originPin = document.querySelector("[data-origin-pin]");
+  if (originPin && state.selectedRouteOptionId) {
+    positionLeafletElement(originPin, toLatLng(getLocationPoint(state.plannerOriginValue)));
+  }
+
+  const destPin = document.querySelector("[data-dest-pin]");
+  if (destPin && journey) {
+    positionLeafletElement(destPin, toLatLng(journey.destPt));
+  }
+
+  const journeyOverlay = document.querySelector("[data-journey-overlay]");
+  if (journeyOverlay && journey) {
+    const walkLegs = journeyOverlay.querySelectorAll(".walk-leg");
+    let walkIndex = 0;
+
+    journey.steps.forEach((step) => {
+      if (step.type !== "walk") {
+        return;
+      }
+
+      const leg = walkLegs[walkIndex];
+      walkIndex += 1;
+      if (!leg) {
+        return;
+      }
+
+      const points = step.points.map((point) => {
+        const projected = mapPointToContainer(toLatLng(point));
+        return `${projected.x},${projected.y}`;
+      });
+      leg.setAttribute("points", points.join(" "));
+    });
+  }
 }
 
 // ── Path planner ─────────────────────────────────────────────
@@ -505,6 +724,7 @@ function render() {
     </div>
   `;
 
+  renderRealMap();
   bindEvents();
 }
 
@@ -637,105 +857,365 @@ function renderMapLayer() {
   }
 
   return `
-    <section class="map-canvas ${state.screen === "map" ? "is-home" : ""}">
-      <div class="map-grid"></div>
-      <div class="campus-glow campus-glow-a"></div>
-      <div class="campus-glow campus-glow-b"></div>
-      <!--<div class="campus-label label-a">Student Recreation Center</div>
-      <div class="campus-label label-b">Bryant Denny Stadium</div>
-      <div class="campus-label label-c">Main Library</div>-->
-      ${visibleRoutes.map(route => renderRouteLayer(route, highlightedRouteIds, journey)).join("")}
-      ${journey ? renderJourneyOverlay(journey) : ""}
-      ${renderUserMarker()}
+    <section class="map-canvas map-canvas--real ${state.screen === "map" ? "is-home" : ""}">
+      <div id="real-map" class="map-real-map" aria-label="University of Alabama area map"></div>
     </section>
   `;
 }
 
-function renderRouteLayer(route, highlightedRouteIds, journey) {
-  const highlighted = highlightedRouteIds.includes(route.id);
-  const dimmed      = journey && !highlighted;
-  const bus         = getBusPosition(route);
+function renderRealMap() {
+  const mapContainer = document.querySelector("#real-map");
 
-  // When a journey is active, only draw the ridden portion of this route
-  const journeyStep = journey?.steps.find(s => s.type === "bus-segment" && s.route.id === route.id);
-  const riddenPoints = journeyStep
-    ? journeyStep.stops.map(s => `${s.x},${s.y}`).join(" ")
+  if (realMapInstance) {
+    realMapView = {
+      center: realMapInstance.getCenter(),
+      zoom: realMapInstance.getZoom()
+    };
+    realMapInstance.remove();
+    realMapInstance = null;
+  }
+
+  if (!mapContainer || !window.L) {
+    return;
+  }
+
+  realMapInstance = L.map(mapContainer, {
+    zoomControl: false,
+    attributionControl: true,
+    scrollWheelZoom: true,
+    doubleClickZoom: true,
+    touchZoom: true,
+    boxZoom: true,
+    keyboard: true,
+    dragging: true
+  }).setView(realMapView.center ?? REAL_MAP_CENTER, realMapView.zoom ?? REAL_MAP_ZOOM);
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    subdomains: ["a", "b", "c"],
+    maxZoom: 20,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(realMapInstance);
+
+  buildLeafletOverlayLayers();
+
+  realMapInstance.on("moveend zoomend", () => {
+    realMapView = {
+      center: realMapInstance.getCenter(),
+      zoom: realMapInstance.getZoom()
+    };
+  });
+
+  realMapInstance.whenReady(() => {
+    window.requestAnimationFrame(() => realMapInstance?.invalidateSize());
+  });
+}
+
+function createBusIcon(route) {
+  return L.divIcon({
+    className: "leaflet-bus-marker",
+    html: `<div class="leaflet-bus-badge" style="--route:${route.color};"><span class="map-bus-emoji" aria-hidden="true">🚌</span></div>`,
+    iconSize: [36, 36],
+    iconAnchor: [18, 18]
+  });
+}
+
+function createStopIcon(route, isActive = false, isCurrent = false, isJourneyStop = false) {
+  const classNames = [
+    "leaflet-stop-marker",
+    isActive ? "is-current" : "",
+    isJourneyStop ? "is-journey-stop" : ""
+  ].filter(Boolean).join(" ");
+
+  return L.divIcon({
+    className: classNames,
+    html: `<div class="leaflet-stop-badge" style="--route:${route.color};"></div>`,
+    iconSize: isCurrent ? [22, 22] : [18, 18],
+    iconAnchor: isCurrent ? [11, 11] : [9, 9]
+  });
+}
+
+function createPinIcon(className, label, dotClass = "") {
+  return L.divIcon({
+    className: `leaflet-pin-marker ${className}`,
+    html: `<div class="${dotClass}"></div><div class="leaflet-pin-label">${label}</div>`,
+    iconSize: [140, 52],
+    iconAnchor: [70, 52]
+  });
+}
+
+function clearLeafletOverlayLayers() {
+  if (!leafletLayerState) {
+    return;
+  }
+
+  leafletLayerState.routeLayers.forEach((entry) => {
+    entry.base?.remove();
+    entry.ridden?.remove();
+    entry.bus?.remove();
+    entry.stops?.forEach((marker) => marker.remove());
+  });
+
+  leafletLayerState.user?.remove();
+  leafletLayerState.origin?.remove();
+  leafletLayerState.destination?.remove();
+  leafletLayerState.walkLayers.forEach((layer) => layer.remove());
+  leafletLayerState = null;
+}
+
+function buildLeafletOverlayLayers() {
+  if (!realMapInstance || !window.L) {
+    return;
+  }
+
+  clearLeafletOverlayLayers();
+
+  const selectedRoute = getSelectedRoute();
+  const journey = state.selectedRouteOptionId
+    ? buildJourneyGeometry(getRouteOption(state.selectedRouteOptionId))
     : null;
+  const highlightedRouteIds = journey
+    ? journey.steps.filter((step) => step.type === "bus-segment").map((step) => step.route.id)
+    : [selectedRoute.id];
 
+  const routeLayers = new Map();
+  const walkLayers = [];
+
+  ROUTES.forEach((route) => {
+    const visible = state.routeVisibility[route.id] || state.screen === "routeDetails" && state.selectedRouteId === route.id;
+    if (!visible) {
+      return;
+    }
+
+    const highlighted = highlightedRouteIds.includes(route.id);
+    const dimmed = !!journey && !highlighted;
+    const routeLatLngs = getRouteLatLngs(route).map(({ lat, lng }) => [lat, lng]);
+    if (route.loop && routeLatLngs.length) {
+      routeLatLngs.push(routeLatLngs[0]);
+    }
+
+    const base = L.polyline(routeLatLngs, {
+      color: route.color,
+      weight: dimmed ? 3 : highlighted ? 5 : 4,
+      opacity: dimmed ? 0.18 : highlighted ? 0.92 : 0.55,
+      lineCap: "round",
+      lineJoin: "round"
+    }).addTo(realMapInstance);
+
+    const ridden = L.polyline([], {
+      color: route.color,
+      weight: 5,
+      opacity: 0,
+      lineCap: "round",
+      lineJoin: "round"
+    }).addTo(realMapInstance);
+
+    const bus = L.marker(getBusLatLng(route), {
+      icon: createBusIcon(route),
+      interactive: true,
+      keyboard: false,
+      zIndexOffset: 1200
+    }).addTo(realMapInstance);
+
+    bus.on("click", () => {
+      openRouteDetails(route.id, state.screen);
+      render();
+    });
+
+    const stopMarkers = route.stops.map((stop, index) => {
+      const details = state.screen === "routeDetails" && state.selectedRouteId === route.id;
+      const status = details ? getStopStatus(route, index) : null;
+      const icon = createStopIcon(route, !!status && status.variant === "current", !!status && status.variant === "current", !!journey?.steps.find((step) => step.type === "bus-segment" && step.route.id === route.id && step.stops.some((journeyStop) => journeyStop.id === stop.id)));
+      const marker = L.marker([toLatLng(stop).lat, toLatLng(stop).lng], {
+        icon,
+        interactive: true,
+        keyboard: false,
+        zIndexOffset: 1000
+      }).addTo(realMapInstance);
+
+      marker.on("click", () => {
+        openRouteDetails(route.id, state.screen);
+        render();
+      });
+
+      return marker;
+    });
+
+    const journeyStep = journey?.steps.find((step) => step.type === "bus-segment" && step.route.id === route.id);
+    if (journeyStep) {
+      const riddenLatLngs = journeyStep.stops.map((stop) => {
+        const point = toLatLng(stop);
+        return [point.lat, point.lng];
+      });
+      ridden.setLatLngs(riddenLatLngs);
+      ridden.setStyle({ opacity: 0.95, weight: 6 });
+    }
+
+    routeLayers.set(route.id, { base, ridden, bus, stopMarkers });
+  });
+
+  const userPoint = toLatLng(USER_LOCATION);
+  const user = L.marker([userPoint.lat, userPoint.lng], {
+    icon: createPinIcon("leaflet-user-pin", "Current Location", "leaflet-user-dot"),
+    interactive: false,
+    keyboard: false,
+    zIndexOffset: 900
+  }).addTo(realMapInstance);
+
+  let origin = null;
+  if (state.selectedRouteOptionId) {
+    const originPoint = toLatLng(getLocationPoint(state.plannerOriginValue));
+    origin = L.marker([originPoint.lat, originPoint.lng], {
+      icon: createPinIcon("leaflet-origin-pin", state.plannerOriginValue, "leaflet-origin-dot"),
+      interactive: false,
+      keyboard: false,
+      zIndexOffset: 950
+    }).addTo(realMapInstance);
+  }
+
+  let destination = null;
+  if (journey) {
+    const destPoint = toLatLng(journey.destPt);
+    destination = L.marker([destPoint.lat, destPoint.lng], {
+      icon: createPinIcon("leaflet-dest-pin", getRouteOption(state.selectedRouteOptionId)?.destination ?? "Destination", "leaflet-dest-dot"),
+      interactive: false,
+      keyboard: false,
+      zIndexOffset: 960
+    }).addTo(realMapInstance);
+
+    journey.steps.forEach((step) => {
+      if (step.type !== "walk") {
+        return;
+      }
+
+      const walkLatLngs = step.points.map((point) => {
+        const latLng = toLatLng(point);
+        return [latLng.lat, latLng.lng];
+      });
+
+      const walkLayer = L.polyline(walkLatLngs, {
+        color: "#eaf2ff",
+        weight: 3,
+        opacity: 0.75,
+        dashArray: "5 8",
+        lineCap: "round",
+        lineJoin: "round"
+      }).addTo(realMapInstance);
+
+      walkLayers.push(walkLayer);
+    });
+  }
+
+  leafletLayerState = {
+    routeLayers,
+    walkLayers,
+    user,
+    origin,
+    destination
+  };
+}
+
+function updateLeafletBusPositions() {
+  if (!leafletLayerState || !realMapInstance) {
+    return;
+  }
+
+  ROUTES.forEach((route) => {
+    const entry = leafletLayerState.routeLayers.get(route.id);
+    if (!entry) {
+      return;
+    }
+
+    const journey = state.selectedRouteOptionId
+      ? buildJourneyGeometry(getRouteOption(state.selectedRouteOptionId))
+      : null;
+    const highlighted = journey
+      ? journey.steps.some((step) => step.type === "bus-segment" && step.route.id === route.id)
+      : state.selectedRouteId === route.id;
+
+    entry.bus.setLatLng([getBusLatLng(route).lat, getBusLatLng(route).lng]);
+    entry.bus.getElement()?.classList.toggle("pulse", !!highlighted);
+
+    if (state.screen === "routeDetails" && state.selectedRouteId === route.id) {
+      const busStopIndex = getCurrentStopIndex(route);
+      const etaPill = document.querySelector(".eta-pill");
+      if (etaPill) etaPill.textContent = `${busStopIndex.nextEta} away`;
+      const statusCopy = document.querySelector(".status-copy");
+      if (statusCopy) statusCopy.textContent = `Bus is currently near ${busStopIndex.currentStop.name}`;
+
+      const stopRows = document.querySelectorAll(".stop-row");
+      route.stops.forEach((stop, index) => {
+        const row = stopRows[index];
+        if (!row) return;
+        const status = getStopStatus(route, index);
+        row.classList.toggle("is-bus-location", status.variant === "current");
+        const iconEl = row.querySelector(".stop-icon");
+        if (iconEl) iconEl.className = `stop-icon ${status.variant}`;
+        const statusEl = row.querySelector(".stop-status");
+        if (statusEl) statusEl.textContent = status.label;
+      });
+
+      entry.stopMarkers.forEach((marker, index) => {
+        const status = getStopStatus(route, index);
+        const stop = route.stops[index];
+        const isJourneyStop = !!journey?.steps.find((step) => step.type === "bus-segment" && step.route.id === route.id && step.stops.some((journeyStop) => journeyStop.id === stop.id));
+        marker.setIcon(createStopIcon(route, status.variant === "current", status.variant === "current", isJourneyStop));
+      });
+    }
+  });
+}
+
+function renderRouteLayer(route, highlightedRouteIds, journey) {
   return `
-    <svg class="route-svg ${dimmed ? "is-dimmed" : ""}" viewBox="0 0 100 100" preserveAspectRatio="none" data-route-id="${route.id}">
-      <polyline
-        class="route-polyline ${highlighted && !riddenPoints ? "is-highlighted" : ""} ${riddenPoints ? "is-ridden-base" : ""}"
-        points="${route.stops.map(s => `${s.x},${s.y}`).join(" ")}${route.loop ? ` ${route.stops[0].x},${route.stops[0].y}` : ''}"
-        style="--route:${route.color}; --glow:${route.glow};"
-      ></polyline>
-      ${riddenPoints ? `
-        <polyline
-          class="route-polyline route-polyline--ridden"
-          points="${riddenPoints}"
-          style="--route:${route.color}; --glow:${route.glow};"
-        ></polyline>` : ""}
+    <svg class="route-svg ${highlightedRouteIds.includes(route.id) ? "is-highlighted" : ""}" data-route-id="${route.id}" preserveAspectRatio="none">
+      <polyline class="route-polyline ${journey && !highlightedRouteIds.includes(route.id) ? "is-dimmed" : ""}" style="--route:${route.color}; --glow:${route.glow};"></polyline>
+      <polyline class="route-polyline route-polyline--ridden" style="--route:${route.color}; --glow:${route.glow};"></polyline>
     </svg>
-    ${route.stops.map((stop, index) => renderStopMarker(route, stop, index, dimmed, journeyStep)).join("")}
-    ${!dimmed ? `
-      <button class="bus-marker ${highlighted ? "pulse" : ""}" data-open-route="${route.id}" style="left:${bus.x}%; top:${bus.y}%; --route:${route.color};" aria-label="Open ${route.name}">
-        <span class="map-bus-emoji" aria-hidden="true">🚌</span>
-      </button>` : ""}
   `;
 }
 
-function renderStopMarker(route, stop, index, dimmed, journeyStep) {
-  if (dimmed) return "";
-  const details = state.screen === "routeDetails" && state.selectedRouteId === route.id;
-  const status  = details ? getStopStatus(route, index) : "";
-  const active  = details && status.variant === "current";
-  const isRiddenStop = journeyStep?.stops.some(s => s.id === stop.id);
+function renderBusMarkerLayer(route) {
   return `
-    <button class="stop-marker ${active ? "is-current" : ""} ${isRiddenStop ? "is-journey-stop" : ""}"
-      data-open-route="${route.id}"
-      style="left:${stop.x}%; top:${stop.y}%; --route:${route.color};">
-      <span></span>
+    <button class="bus-marker" data-open-route="${route.id}" data-route-id="${route.id}" style="--route:${route.color};" aria-label="Open ${route.name}">
+      <span class="map-bus-emoji" aria-hidden="true">🚌</span>
     </button>
   `;
 }
 
-function renderUserMarker() {
-  const originName = state.plannerOriginValue;
-  const isCustomOrigin = originName && originName !== USER_LOCATION.label;
-  const originPt = isCustomOrigin
-    ? getLocationPoint(originName)
-    : { x: USER_LOCATION.x, y: USER_LOCATION.y };
-
+function renderStopMarkerLayer(route) {
+  const details = state.screen === "routeDetails" && state.selectedRouteId === route.id;
   return `
-    <div class="user-marker" style="left:${USER_LOCATION.x}%; top:${USER_LOCATION.y}%;">
+    ${route.stops.map((stop, index) => {
+      const status = details ? getStopStatus(route, index) : "";
+      const active = details && status.variant === "current";
+      return `
+        <button class="stop-marker ${active ? "is-current" : ""}" data-open-route="${route.id}" data-route-id="${route.id}" data-stop-id="${stop.id}" style="--route:${route.color};" aria-label="Open ${route.name} stop ${stop.name}">
+          <span></span>
+        </button>
+      `;
+    }).join("")}
+  `;
+}
+
+function renderUserMarker() {
+  return `
+    <div class="user-marker" data-user-marker>
       <div class="user-pulse"></div>
       <div class="user-dot"></div>
     </div>
-    ${isCustomOrigin && state.selectedRouteOptionId ? `
-      <div class="origin-pin" style="left:${originPt.x}%; top:${originPt.y}%;">
+    ${state.selectedRouteOptionId ? `
+      <div class="origin-pin" data-origin-pin>
         <div class="origin-pin-dot"></div>
-        <div class="origin-pin-label">${originName}</div>
+        <div class="origin-pin-label">${state.plannerOriginValue}</div>
       </div>` : ""}
   `;
 }
 
 function renderJourneyOverlay(journey) {
-  const walkLines = journey.steps
-    .filter(s => s.type === "walk")
-    .map(s => `
-      <polyline
-        class="walk-leg"
-        points="${s.points.map(p => `${p.x},${p.y}`).join(" ")}"
-      />
-    `).join("");
-
-  const { destPt } = journey;
-
   return `
-    <svg class="journey-overlay-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
-      ${walkLines}
+    <svg class="journey-overlay-svg" data-journey-overlay preserveAspectRatio="none">
+      ${journey.steps.map((step, index) => step.type === "walk" ? `<polyline class="walk-leg" data-step-index="${index}"></polyline>` : "").join("")}
     </svg>
-    <div class="dest-pin" style="left:${destPt.x}%; top:${destPt.y}%;">
+    <div class="dest-pin" data-dest-pin>
       <div class="dest-pin-dot"></div>
       <div class="dest-pin-label">${getRouteOption(state.selectedRouteOptionId)?.destination ?? "Destination"}</div>
     </div>
