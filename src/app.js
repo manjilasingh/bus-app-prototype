@@ -10,6 +10,7 @@ const initialOptionCatalog = Object.fromEntries(
 );
 
 const state = {
+  theme: getInitialTheme(),
   screen: "map",
   sheetState: 2,
   sheetHeightVh: sheetHeightsVh[2],
@@ -65,8 +66,33 @@ let leafletLayerState = null;
 
 function init() {
   attachGlobalStyles();
+  applyTheme();
   bindSimulation();
   render();
+}
+
+function getInitialTheme() {
+  try {
+    const savedTheme = window.localStorage.getItem("passio-theme");
+    if (savedTheme === "light" || savedTheme === "dark") {
+      return savedTheme;
+    }
+  } catch {
+    // Ignore storage failures and fall back to dark mode.
+  }
+
+  return "dark";
+}
+
+function applyTheme() {
+  document.body.dataset.theme = state.theme;
+  document.documentElement.style.colorScheme = state.theme;
+
+  try {
+    window.localStorage.setItem("passio-theme", state.theme);
+  } catch {
+    // Ignore storage failures.
+  }
 }
 
 function attachGlobalStyles() {
@@ -714,6 +740,7 @@ function getSelectedRoute() {
 
 function render() {
   setSheetHeight(state.sheetHeightVh);
+  applyTheme();
   app.innerHTML = `
     <div class="shell">
       <div class="screen stage">
@@ -890,11 +917,22 @@ function renderRealMap() {
     dragging: true
   }).setView(realMapView.center ?? REAL_MAP_CENTER, realMapView.zoom ?? REAL_MAP_ZOOM);
 
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    subdomains: ["a", "b", "c"],
-    maxZoom: 20,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-  }).addTo(realMapInstance);
+  const tileUrl = state.theme === "light"
+    ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+    : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+  const tileOptions = state.theme === "light"
+    ? {
+        subdomains: ["a", "b", "c"],
+        maxZoom: 20,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }
+    : {
+        subdomains: ["a", "b", "c", "d"],
+        maxZoom: 20,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+      };
+
+  L.tileLayer(tileUrl, tileOptions).addTo(realMapInstance);
 
   buildLeafletOverlayLayers();
 
@@ -1262,6 +1300,7 @@ function renderHomeSheet() {
           <input id="top-search-input" value="${searchValue}" placeholder="Where are you going?" />
           <button class="search-submit" data-submit-top-search aria-label="Search destination">⌕</button>
         </label>
+        <button class="theme-button" data-toggle-theme type="button" aria-label="Switch to ${state.theme === "dark" ? "light" : "dark"} mode"><span class="theme-icon" aria-hidden="true">${state.theme === "dark" ? "☀" : "☾"}</span></button>
         <button class="filter-button" data-toggle-filters>☰</button>
       </div>
       <div class="top-search-suggestions ${(state.showPlanner || !state.topSearchOpen || !suggestions.length) ? "is-hidden" : ""}" data-top-suggestions>
@@ -2083,6 +2122,12 @@ function bindEvents() {
   }
 
   bindTopSearchSuggestionEvents();
+
+  document.querySelector("[data-toggle-theme]")?.addEventListener("click", () => {
+    state.theme = state.theme === "dark" ? "light" : "dark";
+    applyTheme();
+    render();
+  });
 
   const input = document.querySelector("#destination-input");
   if (input) {
