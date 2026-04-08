@@ -1454,6 +1454,11 @@ function updateTopSearchSuggestions(query) {
   bindTopSearchSuggestionEvents();
 }
 
+function closeTopSearchSuggestions() {
+  state.topSearchOpen = false;
+  updateTopSearchSuggestions(state.draftSearch || state.activeSearch);
+}
+
 function bindTopSearchSuggestionEvents() {
   document.querySelectorAll("[data-top-suggestion]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2166,7 +2171,23 @@ function bindEvents() {
       updateTopSearchSuggestions(topSearchInput.value);
     });
 
+    topSearchInput.addEventListener("blur", () => {
+      window.requestAnimationFrame(() => {
+        if (document.activeElement?.closest(".top-search-stack")) {
+          return;
+        }
+
+        closeTopSearchSuggestions();
+      });
+    });
+
     topSearchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeTopSearchSuggestions();
+        topSearchInput.blur();
+        return;
+      }
+
       if (event.key !== "Enter") {
         return;
       }
