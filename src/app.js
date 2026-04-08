@@ -50,6 +50,7 @@ const state = {
     timeRange: "5-15 min",
     days: ["Mon", "Wed", "Fri"]
   },
+  alertMatchState: {},
   busProgress: Object.fromEntries(ROUTES.map((route, index) => [route.id, (index * 0.17) % 1])),
   busPauseUntil: Object.fromEntries(ROUTES.map((route) => [route.id, 0])),
   openTimetable: null,
@@ -158,6 +159,7 @@ function bindSimulation() {
       }
     });
 
+    checkConfiguredAlerts();
     updateMapOnly();
   }, 3600);
 }
@@ -2863,6 +2865,84 @@ function getCurrentStopIndex(route) {
     currentStop: route.stops[currentIndex],
     nextEta: `${Math.max(2, 6 - currentIndex)} min`
   };
+}
+
+function getEtaMinutesForStop(route, stopId) {
+  const stopIndex = route.stops.findIndex((stop) => stop.id === stopId);
+  if (stopIndex === -1) {
+    return null;
+  }
+
+  const stopCount = route.stops.length;
+  const segCount = route.loop ? stopCount : stopCount - 1;
+  const scaledProgress = state.busProgress[route.id] * segCount;
+  const normalizedProgress = route.loop
+    ? scaledProgress
+    : Math.min(segCount, Math.max(0, scaledProgress));
+  const currentSegmentIndex = Math.floor(normalizedProgress) % stopCount;
+  const segmentProgress = normalizedProgress - Math.floor(normalizedProgress);
+  const toNextStopMinutes = (1 - segmentProgress) * TIME_BUS_PER_STOP;
+
+  if (stopIndex === currentSegmentIndex && nearStop(route, state.busProgress[route.id])) {
+    return 0;
+  }
+
+  if (route.loop) {
+    const stopsAhead = (stopIndex - currentSegmentIndex - 1 + stopCount) % stopCount;
+    return Math.max(0, Math.round(toNextStopMinutes + stopsAhead * TIME_BUS_PER_STOP));
+  }
+
+  if (stopIndex <= currentSegmentIndex) {
+    return 0;
+  }
+
+  const stopsAhead = stopIndex - currentSegmentIndex - 1;
+  return Math.max(0, Math.round(toNextStopMinutes + stopsAhead * TIME_BUS_PER_STOP));
+}
+
+function parseAlertTimeRange(range) {
+  const [min, max] = range.split("-").map((value) => Number.parseInt(value, 10));
+  return {
+    min: Number.isFinite(min) ? min : 0,
+    max: Number.isFinite(max) ? max : 0
+  };
+}
+
+function isAlertActiveToday(alert) {
+  const today = new Date().toLocaleDateString("en-US", { weekday: "short" });
+  return !alert.days?.length || alert.days.includes(today);
+}
+
+function checkConfiguredAlerts() {
+  state.alerts.forEach((alertConfig) => {
+    const route = ROUTES.find((item) => item.id === alertConfig.routeId);
+    const stop = route?.stops.find((item) => item.id === alertConfig.stopId);
+    if (!route || !stop || !alertConfig.enabled) {
+      state.alertMatchState[alertConfig.id] = false;
+      return;
+    }
+
+    if (!isAlertActiveToday(alertConfig)) {
+      state.alertMatchState[alertConfig.id] = false;
+      return;
+    }
+
+    const etaMinutes = getEtaMinutesForStop(route, stop.id);
+    if (etaMinutes === null) {
+      state.alertMatchState[alertConfig.id] = false;
+      return;
+    }
+
+    const { min, max } = parseAlertTimeRange(alertConfig.timeRange);
+    const matchesWindow = etaMinutes >= min && etaMinutes <= max;
+    const wasMatched = !!state.alertMatchState[alertConfig.id];
+
+    if (matchesWindow && !wasMatched) {
+      window.alert(`${route.name} is arriving at ${stop.name} in ${etaMinutes} min.`);
+    }
+
+    state.alertMatchState[alertConfig.id] = matchesWindow;
+  });
 }
 
 function getStopStatus(route, stopIndex) {
