@@ -16,6 +16,7 @@ const state = {
   sheetHeightVh: sheetHeightsVh[2],
   routeVisibility: Object.fromEntries(ROUTES.map((route) => [route.id, true])),
   selectedRouteId: "r5",
+  selectedStop: null,
   selectedRouteOptionId: null,
   activeSearch: "",
   draftSearch: "",
@@ -738,6 +739,28 @@ function getSelectedRoute() {
   return ROUTES.find((route) => route.id === state.selectedRouteId) ?? ROUTES[0];
 }
 
+function getSelectedStopDetails() {
+  if (!state.selectedStop) {
+    return null;
+  }
+
+  const route = ROUTES.find((item) => item.id === state.selectedStop.routeId);
+  const stop = route?.stops.find((item) => item.id === state.selectedStop.stopId);
+  if (!route || !stop) {
+    return null;
+  }
+
+  return { route, stop };
+}
+
+function selectStop(routeId, stopId) {
+  state.selectedStop = { routeId, stopId };
+}
+
+function clearSelectedStop() {
+  state.selectedStop = null;
+}
+
 function render() {
   setSheetHeight(state.sheetHeightVh);
   applyTheme();
@@ -857,6 +880,7 @@ function renderMapLayer() {
   const journey = state.selectedRouteOptionId
     ? buildJourneyGeometry(getRouteOption(state.selectedRouteOptionId))
     : null;
+  const selectedStop = getSelectedStopDetails();
 
   // Which routes to show + which are highlighted
   let visibleRoutes, highlightedRouteIds;
@@ -886,7 +910,21 @@ function renderMapLayer() {
   return `
     <section class="map-canvas map-canvas--real ${state.screen === "map" ? "is-home" : ""}">
       <div id="real-map" class="map-real-map" aria-label="University of Alabama area map"></div>
+      ${state.screen === "map" && selectedStop ? renderSelectedStopCard(selectedStop) : ""}
     </section>
+  `;
+}
+
+function renderSelectedStopCard({ route, stop }) {
+  return `
+    <div class="selected-stop-card" data-selected-stop-card style="--route:${route.color};">
+      <div class="selected-stop-card-copy">
+        <div class="selected-stop-eyebrow">${route.shortName} stop</div>
+        <div class="selected-stop-name">${stop.name}</div>
+      </div>
+      <button class="selected-stop-route-button" data-open-selected-stop-route type="button">View Route</button>
+      <button class="selected-stop-close" data-clear-stop-selection type="button" aria-label="Close stop details">✕</button>
+    </div>
   `;
 }
 
@@ -1071,7 +1109,7 @@ function buildLeafletOverlayLayers() {
       }).addTo(realMapInstance);
 
       marker.on("click", () => {
-        openRouteDetails(route.id, state.screen);
+        selectStop(route.id, stop.id);
         render();
       });
 
@@ -2209,6 +2247,7 @@ function bindEvents() {
           }
         }
       } else {
+        clearSelectedStop();
         state.screen = targetScreen;
         if (targetScreen === "alerts") {
           state.alertsView = "list";
@@ -2220,9 +2259,25 @@ function bindEvents() {
 
   document.querySelectorAll("[data-open-route]").forEach((button) => {
     button.addEventListener("click", () => {
+      clearSelectedStop();
       openRouteDetails(button.dataset.openRoute, state.screen);
       render();
     });
+  });
+
+  document.querySelector("[data-open-selected-stop-route]")?.addEventListener("click", () => {
+    const selectedStop = getSelectedStopDetails();
+    if (!selectedStop) {
+      return;
+    }
+
+    openRouteDetails(selectedStop.route.id, state.screen);
+    render();
+  });
+
+  document.querySelector("[data-clear-stop-selection]")?.addEventListener("click", () => {
+    clearSelectedStop();
+    render();
   });
 
   document.querySelectorAll("[data-destination]").forEach((button) => {
@@ -2712,6 +2767,7 @@ function getRouteOption(optionId) {
 }
 
 function openRouteDetails(routeId, originScreen = state.screen) {
+  clearSelectedStop();
   state.selectedRouteId = routeId;
   state.routeDetailsBackScreen = originScreen === "routeDetails" ? "map" : originScreen;
   state.screen = "routeDetails";
