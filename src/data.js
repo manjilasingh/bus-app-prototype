@@ -15,8 +15,8 @@ export const ROUTES = [
   // NW campus loop. Shares Central Hub with Blue Loop.
   {
     id: "r1",
-    shortName: "G1",
-    name: "Green Loop",
+    shortName: "WC",
+    name: "West Campus Loop",
     color: "#35d07f",
     glow: "rgba(53, 208, 127, 0.35)",
     activeHours: "7:00 AM - 11:00 PM",
@@ -36,8 +36,8 @@ export const ROUTES = [
   // NE campus loop. Shares Central Hub with Green Loop.
   {
     id: "r2",
-    shortName: "B2",
-    name: "Blue Loop",
+    shortName: "EC",
+    name: "East Campus Loop",
     color: "#3ba7ff",
     glow: "rgba(59, 167, 255, 0.35)",
     activeHours: "7:30 AM - 10:30 PM",
@@ -58,8 +58,8 @@ export const ROUTES = [
   // South corridor loop. Shares Main Plaza with Teal Crosstown.
   {
     id: "r5",
-    shortName: "R9",
-    name: "Red Line",
+    shortName: "RL",
+    name: "Residential Loop",
     color: "#ff5f6d",
     glow: "rgba(255, 95, 109, 0.35)",
     activeHours: "6:30 AM - 12:00 AM",
@@ -80,8 +80,8 @@ export const ROUTES = [
   // Northern express loop (standalone).
   {
     id: "r3",
-    shortName: "S7",
-    name: "Sunset Express",
+    shortName: "NC",
+    name: "North Campus Loop",
     color: "#ff8a3d",
     glow: "rgba(255, 138, 61, 0.35)",
     activeHours: "8:00 AM - 9:30 PM",
@@ -101,8 +101,8 @@ export const ROUTES = [
   // West-side connector loop (standalone).
   {
     id: "r4",
-    shortName: "P4",
-    name: "Purple Connector",
+    shortName: "CL",
+    name: "Commuter Loop",
     color: "#b86dff",
     glow: "rgba(184, 109, 255, 0.35)",
     activeHours: "7:00 AM - 8:00 PM",
