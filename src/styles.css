@@ -80,7 +80,7 @@ button {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 168px;
+  height: 98px;
   background: linear-gradient(180deg, rgba(9, 18, 31, 0.98), rgba(8, 15, 26, 0.99));
   z-index: 12;
   pointer-events: none;
