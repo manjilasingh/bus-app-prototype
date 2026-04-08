@@ -16,6 +16,7 @@ const state = {
   sheetHeightVh: sheetHeightsVh[2],
   routeVisibility: Object.fromEntries(ROUTES.map((route) => [route.id, true])),
   selectedRouteId: "r5",
+  selectedStop: null,
   selectedRouteOptionId: null,
   activeSearch: "",
   draftSearch: "",
@@ -49,6 +50,7 @@ const state = {
     timeRange: "5-15 min",
     days: ["Mon", "Wed", "Fri"]
   },
+  alertMatchState: {},
   busProgress: Object.fromEntries(ROUTES.map((route, index) => [route.id, (index * 0.17) % 1])),
   busPauseUntil: Object.fromEntries(ROUTES.map((route) => [route.id, 0])),
   openTimetable: null,
@@ -157,6 +159,7 @@ function bindSimulation() {
       }
     });
 
+    checkConfiguredAlerts();
     updateMapOnly();
   }, 3600);
 }
@@ -738,6 +741,42 @@ function getSelectedRoute() {
   return ROUTES.find((route) => route.id === state.selectedRouteId) ?? ROUTES[0];
 }
 
+function getSelectedStopDetails() {
+  if (!state.selectedStop) {
+    return null;
+  }
+
+  const route = ROUTES.find((item) => item.id === state.selectedStop.routeId);
+  const stop = route?.stops.find((item) => item.id === state.selectedStop.stopId);
+  if (!route || !stop) {
+    return null;
+  }
+
+  return { route, stop };
+}
+
+function selectStop(routeId, stopId) {
+  state.selectedStop = { routeId, stopId };
+}
+
+function clearSelectedStop() {
+  state.selectedStop = null;
+}
+
+function getWalkPathStyle() {
+  if (state.theme === "light") {
+    return {
+      color: "#1d4ed8",
+      opacity: 0.88
+    };
+  }
+
+  return {
+    color: "#eaf2ff",
+    opacity: 0.75
+  };
+}
+
 function render() {
   setSheetHeight(state.sheetHeightVh);
   applyTheme();
@@ -857,6 +896,7 @@ function renderMapLayer() {
   const journey = state.selectedRouteOptionId
     ? buildJourneyGeometry(getRouteOption(state.selectedRouteOptionId))
     : null;
+  const selectedStop = getSelectedStopDetails();
 
   // Which routes to show + which are highlighted
   let visibleRoutes, highlightedRouteIds;
@@ -886,7 +926,21 @@ function renderMapLayer() {
   return `
     <section class="map-canvas map-canvas--real ${state.screen === "map" ? "is-home" : ""}">
       <div id="real-map" class="map-real-map" aria-label="University of Alabama area map"></div>
+      ${state.screen === "map" && selectedStop ? renderSelectedStopCard(selectedStop) : ""}
     </section>
+  `;
+}
+
+function renderSelectedStopCard({ route, stop }) {
+  return `
+    <div class="selected-stop-card" data-selected-stop-card style="--route:${route.color};">
+      <div class="selected-stop-card-copy">
+        <div class="selected-stop-eyebrow">${route.shortName} stop</div>
+        <div class="selected-stop-name">${stop.name}</div>
+      </div>
+      <button class="selected-stop-route-button" data-open-selected-stop-route type="button">View Route</button>
+      <button class="selected-stop-close" data-clear-stop-selection type="button" aria-label="Close stop details">✕</button>
+    </div>
   `;
 }
 
@@ -1113,7 +1167,7 @@ function buildLeafletOverlayLayers() {
       }).addTo(realMapInstance);
 
       marker.on("click", () => {
-        openRouteDetails(route.id, state.screen);
+        selectStop(route.id, stop.id);
         render();
       });
 
@@ -1161,11 +1215,12 @@ function buildLeafletOverlayLayers() {
         const latLng = toLatLng(point);
         return [latLng.lat, latLng.lng];
       });
+      const walkPathStyle = getWalkPathStyle();
 
       const walkLayer = L.polyline(walkLatLngs, {
-        color: "#eaf2ff",
+        color: walkPathStyle.color,
         weight: 3,
-        opacity: 0.75,
+        opacity: walkPathStyle.opacity,
         dashArray: "5 8",
         lineCap: "round",
         lineJoin: "round"
@@ -1429,6 +1484,11 @@ function updateTopSearchSuggestions(query) {
   listEl.classList.remove("is-hidden");
   listEl.innerHTML = renderTopSearchSuggestionItems(suggestions);
   bindTopSearchSuggestionEvents();
+}
+
+function closeTopSearchSuggestions() {
+  state.topSearchOpen = false;
+  updateTopSearchSuggestions(state.draftSearch || state.activeSearch);
 }
 
 function bindTopSearchSuggestionEvents() {
@@ -2143,7 +2203,23 @@ function bindEvents() {
       updateTopSearchSuggestions(topSearchInput.value);
     });
 
+    topSearchInput.addEventListener("blur", () => {
+      window.requestAnimationFrame(() => {
+        if (document.activeElement?.closest(".top-search-stack")) {
+          return;
+        }
+
+        closeTopSearchSuggestions();
+      });
+    });
+
     topSearchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeTopSearchSuggestions();
+        topSearchInput.blur();
+        return;
+      }
+
       if (event.key !== "Enter") {
         return;
       }
@@ -2241,6 +2317,7 @@ function bindEvents() {
           }
         }
       } else {
+        clearSelectedStop();
         state.screen = targetScreen;
         if (targetScreen === "alerts") {
           state.alertsView = "list";
@@ -2252,9 +2329,25 @@ function bindEvents() {
 
   document.querySelectorAll("[data-open-route]").forEach((button) => {
     button.addEventListener("click", () => {
+      clearSelectedStop();
       openRouteDetails(button.dataset.openRoute, state.screen);
       render();
     });
+  });
+
+  document.querySelector("[data-open-selected-stop-route]")?.addEventListener("click", () => {
+    const selectedStop = getSelectedStopDetails();
+    if (!selectedStop) {
+      return;
+    }
+
+    openRouteDetails(selectedStop.route.id, state.screen);
+    render();
+  });
+
+  document.querySelector("[data-clear-stop-selection]")?.addEventListener("click", () => {
+    clearSelectedStop();
+    render();
   });
 
   document.querySelectorAll("[data-destination]").forEach((button) => {
@@ -2744,6 +2837,7 @@ function getRouteOption(optionId) {
 }
 
 function openRouteDetails(routeId, originScreen = state.screen) {
+  clearSelectedStop();
   state.selectedRouteId = routeId;
   state.routeDetailsBackScreen = originScreen === "routeDetails" ? "map" : originScreen;
   state.screen = "routeDetails";
@@ -2824,6 +2918,84 @@ function getCurrentStopIndex(route) {
     currentStop: route.stops[currentIndex],
     nextEta: `${Math.max(2, 6 - currentIndex)} min`
   };
+}
+
+function getEtaMinutesForStop(route, stopId) {
+  const stopIndex = route.stops.findIndex((stop) => stop.id === stopId);
+  if (stopIndex === -1) {
+    return null;
+  }
+
+  const stopCount = route.stops.length;
+  const segCount = route.loop ? stopCount : stopCount - 1;
+  const scaledProgress = state.busProgress[route.id] * segCount;
+  const normalizedProgress = route.loop
+    ? scaledProgress
+    : Math.min(segCount, Math.max(0, scaledProgress));
+  const currentSegmentIndex = Math.floor(normalizedProgress) % stopCount;
+  const segmentProgress = normalizedProgress - Math.floor(normalizedProgress);
+  const toNextStopMinutes = (1 - segmentProgress) * TIME_BUS_PER_STOP;
+
+  if (stopIndex === currentSegmentIndex && nearStop(route, state.busProgress[route.id])) {
+    return 0;
+  }
+
+  if (route.loop) {
+    const stopsAhead = (stopIndex - currentSegmentIndex - 1 + stopCount) % stopCount;
+    return Math.max(0, Math.round(toNextStopMinutes + stopsAhead * TIME_BUS_PER_STOP));
+  }
+
+  if (stopIndex <= currentSegmentIndex) {
+    return 0;
+  }
+
+  const stopsAhead = stopIndex - currentSegmentIndex - 1;
+  return Math.max(0, Math.round(toNextStopMinutes + stopsAhead * TIME_BUS_PER_STOP));
+}
+
+function parseAlertTimeRange(range) {
+  const [min, max] = range.split("-").map((value) => Number.parseInt(value, 10));
+  return {
+    min: Number.isFinite(min) ? min : 0,
+    max: Number.isFinite(max) ? max : 0
+  };
+}
+
+function isAlertActiveToday(alert) {
+  const today = new Date().toLocaleDateString("en-US", { weekday: "short" });
+  return !alert.days?.length || alert.days.includes(today);
+}
+
+function checkConfiguredAlerts() {
+  state.alerts.forEach((alertConfig) => {
+    const route = ROUTES.find((item) => item.id === alertConfig.routeId);
+    const stop = route?.stops.find((item) => item.id === alertConfig.stopId);
+    if (!route || !stop || !alertConfig.enabled) {
+      state.alertMatchState[alertConfig.id] = false;
+      return;
+    }
+
+    if (!isAlertActiveToday(alertConfig)) {
+      state.alertMatchState[alertConfig.id] = false;
+      return;
+    }
+
+    const etaMinutes = getEtaMinutesForStop(route, stop.id);
+    if (etaMinutes === null) {
+      state.alertMatchState[alertConfig.id] = false;
+      return;
+    }
+
+    const { min, max } = parseAlertTimeRange(alertConfig.timeRange);
+    const matchesWindow = etaMinutes >= min && etaMinutes <= max;
+    const wasMatched = !!state.alertMatchState[alertConfig.id];
+
+    if (matchesWindow && !wasMatched) {
+      window.alert(`${route.name} is arriving at ${stop.name} in ${etaMinutes} min.`);
+    }
+
+    state.alertMatchState[alertConfig.id] = matchesWindow;
+  });
 }
 
 function getStopStatus(route, stopIndex) {
