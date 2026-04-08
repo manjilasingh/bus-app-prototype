@@ -1041,7 +1041,11 @@ function clearLeafletOverlayLayers() {
   }
 
   leafletLayerState.routeLayers.forEach((entry) => {
-    entry.base?.remove();
+    if (Array.isArray(entry.base)) {
+      entry.base.forEach(layer => layer?.remove());
+    } else {
+      entry.base?.remove();
+    }
     entry.ridden?.remove();
     entry.bus?.remove();
     entry.stops?.forEach((marker) => marker.remove());
@@ -1085,13 +1089,40 @@ function buildLeafletOverlayLayers() {
       routeLatLngs.push(routeLatLngs[0]);
     }
 
-    const base = L.polyline(routeLatLngs, {
-      color: route.color,
-      weight: dimmed ? 3 : highlighted ? 5 : 4,
-      opacity: dimmed ? 0.18 : highlighted ? 0.92 : 0.55,
-      lineCap: "round",
-      lineJoin: "round"
-    }).addTo(realMapInstance);
+    let base;
+    const journeyStep = journey?.steps.find((step) => step.type === "bus-segment" && step.route.id === route.id);
+    
+    if (journeyStep && journeyStep.stops.length > 1) {
+      // For journey routes, only show segments between consecutive ridden stops
+      const riddenSegments = [];
+      for (let i = 0; i < journeyStep.stops.length - 1; i++) {
+        const startStop = journeyStep.stops[i];
+        const endStop = journeyStep.stops[i + 1];
+        const startPoint = toLatLng(startStop);
+        const endPoint = toLatLng(endStop);
+        riddenSegments.push([[startPoint.lat, startPoint.lng], [endPoint.lat, endPoint.lng]]);
+      }
+      
+      // Create polylines for each segment
+      base = riddenSegments.map(segmentLatLngs => 
+        L.polyline(segmentLatLngs, {
+          color: route.color,
+          weight: 5,
+          opacity: 0.92,
+          lineCap: "round",
+          lineJoin: "round"
+        }).addTo(realMapInstance)
+      );
+    } else {
+      // Non-journey routes or routes with single stop - show full route
+      base = L.polyline(routeLatLngs, {
+        color: route.color,
+        weight: dimmed ? 3 : highlighted ? 5 : 4,
+        opacity: dimmed ? 0.18 : highlighted ? 0.92 : 0.55,
+        lineCap: "round",
+        lineJoin: "round"
+      }).addTo(realMapInstance);
+    }
 
     const ridden = L.polyline([], {
       color: route.color,
@@ -1102,11 +1133,13 @@ function buildLeafletOverlayLayers() {
     }).addTo(realMapInstance);
 
     const bus = L.marker(getBusLatLng(route), {
-      icon: createBusIcon(route),
-      interactive: true,
-      keyboard: false,
-      zIndexOffset: 1200
-    }).addTo(realMapInstance);
+  icon: createBusIcon(route),
+  interactive: true,
+  keyboard: false,
+  zIndexOffset: 1200,
+  opacity: dimmed ? 0.15 : 1   // dim instead of hide
+}).addTo(realMapInstance);
+
 
     bus.on("click", () => {
       openRouteDetails(route.id, state.screen);
@@ -1117,11 +1150,20 @@ function buildLeafletOverlayLayers() {
       const details = state.screen === "routeDetails" && state.selectedRouteId === route.id;
       const status = details ? getStopStatus(route, index) : null;
       const icon = createStopIcon(route, !!status && status.variant === "current", !!status && status.variant === "current", !!journey?.steps.find((step) => step.type === "bus-segment" && step.route.id === route.id && step.stops.some((journeyStop) => journeyStop.id === stop.id)));
+      const isJourneyStop = !!journey?.steps.find(step =>
+        step.type === "bus-segment" &&
+        step.route.id === route.id &&
+        step.stops.some(s => s.id === stop.id)
+      );
+
+      const dimmed = !!journey && !isJourneyStop;
+      
       const marker = L.marker([toLatLng(stop).lat, toLatLng(stop).lng], {
         icon,
         interactive: true,
         keyboard: false,
-        zIndexOffset: 1000
+        zIndexOffset: 1000,
+        opacity: dimmed ? 0.15 : 1
       }).addTo(realMapInstance);
 
       marker.on("click", () => {
@@ -1131,16 +1173,6 @@ function buildLeafletOverlayLayers() {
 
       return marker;
     });
-
-    const journeyStep = journey?.steps.find((step) => step.type === "bus-segment" && step.route.id === route.id);
-    if (journeyStep) {
-      const riddenLatLngs = journeyStep.stops.map((stop) => {
-        const point = toLatLng(stop);
-        return [point.lat, point.lng];
-      });
-      ridden.setLatLngs(riddenLatLngs);
-      ridden.setStyle({ opacity: 0.95, weight: 6 });
-    }
 
     routeLayers.set(route.id, { base, ridden, bus, stopMarkers });
   });
