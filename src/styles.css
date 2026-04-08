@@ -2127,6 +2127,8 @@ body[data-theme="light"] .day-pill {
 }
 
 body[data-theme="light"] .day-pill.is-selected {
+  background: rgba(34, 197, 94, 0.14);
+  border-color: rgba(34, 197, 94, 0.28);
   color: #166534;
 }
 
