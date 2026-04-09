@@ -61,8 +61,8 @@ You can also use any equivalent static server, including VS Code Live Server.
 
 - Users can create notifications for a route, stop, ETA window, and selected weekdays.
 - Enabled notifications are checked against the simulated bus positions.
-- Matching notifications currently trigger a native browser `window.alert(...)`.
-  The browser controls the dialog chrome, so the title text cannot be customized.
+- Matching notifications appear as in-app toast messages.
+- Toasts are non-blocking, can be manually dismissed, and currently auto-dismiss after 30 seconds.
 
 ### Filters, Saved Items, and Themes
 
@@ -81,4 +81,4 @@ You can also use any equivalent static server, including VS Code Live Server.
 
 - There is no backend or persistence layer beyond browser-local theme preference.
 - Route planning, ETAs, and bus movement are simulated from mocked data.
-- Notifications use browser alerts instead of a custom in-app notification component.
+- Notifications are frontend-only toast messages and are not backed by any browser push or backend delivery system.
