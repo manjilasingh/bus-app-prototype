@@ -4,7 +4,7 @@
 // schematic x,y layout with real UA campus geography).
 
 const STOP_CENTRAL_HUB = { id: "central-hub", name: "Central Hub",  x: 48, y: 42, lat: 33.2099, lng: -87.5430 };
-const STOP_MAIN_PLAZA  = { id: "the-quad",    name: "The Quad",     x: 50, y: 62, lat: 33.2065, lng: -87.5410 };
+const STOP_MAIN_PLAZA  = { id: "the-quad",    name: "Hotel Capstone",     x: 50, y: 62, lat: 33.2065, lng: -87.5410 };
 const STOP_SOUTH_HUB   = { id: "south-hub",   name: "South Hub",    x: 17, y: 80, lat: 33.2040, lng: -87.5475 };
 const STOP_NORTH_HUB   = { id: "north-hub",   name: "North Hub",    x: 71, y:  9, lat: 33.2185, lng: -87.5395 };
 
@@ -32,9 +32,12 @@ export const ROUTES = [
     stops: [
       STOP_NORTH_HUB,
       { id: "r2s2", name: "Welcome Center",           x: 58, y: 22, lat: 33.2160, lng: -87.5383 },
-      { id: "r2s3", name: "Bruno Library",            x: 64, y: 38, lat: 33.2111, lng: -87.5493 },
-      STOP_CENTRAL_HUB,
       { id: "r2s5", name: "Rec Center",               x: 58, y: 54, lat: 33.2120, lng: -87.5322 },
+      STOP_CENTRAL_HUB,
+      { id: "r2s3", name: "Bruno Library",            x: 64, y: 38, lat: 33.2111, lng: -87.5493 },
+      
+      
+      
       { id: "r2s6", name: "Woods Quad",               x: 78, y: 46, lat: 33.2133, lng: -87.5458 },
       { id: "r2s7", name: "Natural History Museum",   x: 82, y: 30, lat: 33.2119, lng: -87.5439 },
     ]
@@ -47,11 +50,15 @@ export const ROUTES = [
     activeHours: "6:30 AM - 12:00 AM", durationLabel: "18-24 min", loop: true,
     stops: [
       STOP_SOUTH_HUB,
-      { id: "r5s2", name: "President's Mansion",      x: 32, y: 70, lat: 33.2088, lng: -87.5465 },
-      STOP_MAIN_PLAZA,
-      { id: "r5s4", name: "East Village",             x: 84, y: 64, lat: 33.2070, lng: -87.5345 },
-      { id: "r5s5", name: "Gorgas Library",           x: 62, y: 72, lat: 33.2118, lng: -87.5460 },
       { id: "r5s6", name: "Law School",               x: 76, y: 78, lat: 33.2039, lng: -87.5354 },
+      { id: "r5s4", name: "East Village",             x: 84, y: 64, lat: 33.2070, lng: -87.5345 },
+      STOP_MAIN_PLAZA,
+      { id: "r5s2", name: "President's Mansion",      x: 32, y: 70, lat: 33.2088, lng: -87.5465 },
+      
+      
+      { id: "r5s5", name: "Gorgas Library",           x: 62, y: 72, lat: 33.2118, lng: -87.5460 },
+      
+      
     ]
   },
 
@@ -79,11 +86,14 @@ export const ROUTES = [
       { id: "r4s1", name: "Faculty Lot",                     x:  7, y: 55, lat: 33.2120, lng: -87.5570 },
       { id: "r4s2", name: "West Commuter Parking",           x:  9, y: 65, lat: 33.2085, lng: -87.5565 },
       STOP_SOUTH_HUB,
-      { id: "r4s4", name: "Publix",                          x: 45, y: 92, lat: 33.2121, lng: -87.5535 },
-      { id: "r4s5", name: "Moody Music Hall",                x: 90, y: 85, lat: 33.2074, lng: -87.5382 },
       { id: "r4s6", name: "South Lawn",                      x: 92, y: 65, lat: 33.2041, lng: -87.5327 },
-      STOP_CENTRAL_HUB,
+      { id: "r4s5", name: "Moody Music Hall",                x: 90, y: 85, lat: 33.2074, lng: -87.5382 },
       { id: "r4s8", name: "Saban Catholic Student Center",   x: 22, y: 42, lat: 33.2075, lng: -87.5418 },
+      STOP_CENTRAL_HUB,
+      { id: "r4s4", name: "Publix",                          x: 45, y: 92, lat: 33.2121, lng: -87.5535 },
+      
+      
+      
     ]
   }
 ];
