@@ -1029,7 +1029,7 @@ function createStopIcon(route, isActive = false, isCurrent = false, isJourneySto
 function createPinIcon(className, label, dotClass = "") {
   return L.divIcon({
     className: `leaflet-pin-marker ${className}`,
-    html: `<div class="${dotClass}"></div><div class="leaflet-pin-label">${label}</div>`,
+    html: `<div class="${dotClass}"></div>${label ? `<div class="leaflet-pin-label">${label}</div>` : ""}`,
     iconSize: [140, 52],
     iconAnchor: [70, 52]
   });
