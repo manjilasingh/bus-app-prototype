@@ -308,6 +308,9 @@ function gaussianSolve3x3(matrix, vector) {
 }
 
 function toLatLng(point) {
+  if (point.lat !== undefined && point.lng !== undefined) {
+    return { lat: point.lat, lng: point.lng };
+  }
   return campusProjection(point);
 }
 
