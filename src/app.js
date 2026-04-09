@@ -1,7 +1,7 @@
 import { BUILDINGS, BUILDING_LOCATIONS, MAP_CALIBRATION_POINTS, REAL_MAP_CENTER, REAL_MAP_ZOOM, ROUTES, TIMETABLES, USER_LOCATION,
          TIME_WALK_TO_STOP, TIME_BUS_PER_STOP, TIME_WALK_DIRECT } from "./data.js";
 
-const sheetHeightsVh = [0, 16, 42, 74];
+const sheetHeightsVh = [0, 16, 50, 74];
 const sheetHeights = sheetHeightsVh.map((height) => `${height}vh`);
 const collapsedSheetPeekPx = 44;
 const WALK_RADIUS  = 22; // map-unit radius within which a stop is "walkable"
@@ -1029,7 +1029,7 @@ function createStopIcon(route, isActive = false, isCurrent = false, isJourneySto
 function createPinIcon(className, label, dotClass = "") {
   return L.divIcon({
     className: `leaflet-pin-marker ${className}`,
-    html: `<div class="${dotClass}"></div><div class="leaflet-pin-label">${label}</div>`,
+    html: `<div class="${dotClass}"></div>${label ? `<div class="leaflet-pin-label">${label}</div>` : ""}`,
     iconSize: [140, 52],
     iconAnchor: [70, 52]
   });
@@ -2419,7 +2419,7 @@ function bindEvents() {
           state.routeOptionCatalog[item.id] = item;
         });
         state.screen = "map";
-        setSheetPreset(3);
+        setSheetPreset(2);
       }
       render();
     });
@@ -2617,7 +2617,7 @@ function bindEvents() {
     busSegs.forEach(s => state.favoriteRoutes.add(s.routeId));
     // Always open the journey detail view regardless of leg count
     state.screen = "journeyDetails";
-    setSheetPreset(3);
+    setSheetPreset(2);
     render();
   });
 
@@ -2885,7 +2885,7 @@ function openRouteDetails(routeId, originScreen = state.screen) {
   state.selectedRouteId = routeId;
   state.routeDetailsBackScreen = originScreen === "routeDetails" ? "map" : originScreen;
   state.screen = "routeDetails";
-  setSheetPreset(3);
+  setSheetPreset(2);
 }
 
 function submitDestination(value) {
@@ -2904,7 +2904,7 @@ function submitDestination(value) {
   });
   state.selectedRouteOptionId = state.routingResults[0]?.id ?? null;
   state.screen = "map"
-  setSheetPreset(3);
+  setSheetPreset(2);
   render();
 }
 
@@ -2924,7 +2924,7 @@ function submitRouteSearch() {
     state.routeOptionCatalog[option.id] = option;
   });
   state.selectedRouteOptionId = state.routingResults[0]?.id ?? null;
-  setSheetPreset(3);
+  setSheetPreset(2);
   render();
 }
 
