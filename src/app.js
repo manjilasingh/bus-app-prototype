@@ -32,6 +32,7 @@ const state = {
   plannerOriginEditorOpen: false,
   favoriteRouteOptionIds: new Set(["route-opt-Student Recreation Center-mixed"]),
   favoriteRoutes: new Set(["r1", "r5"]),
+  toastQueue: [],
   alerts: [
     {
       id: "a1",
@@ -788,6 +789,7 @@ function render() {
       <div class="screen stage">
         ${renderMapLayer()}
         ${renderScreenOverlay()}
+        ${renderToastLayer()}
         ${renderNav()}
       </div>
     </div>
@@ -795,6 +797,46 @@ function render() {
 
   renderRealMap();
   bindEvents();
+}
+
+function renderToastLayer() {
+  if (!state.toastQueue.length) {
+    return "";
+  }
+
+  return `
+    <div class="toast-stack" aria-live="polite" aria-atomic="true">
+      ${state.toastQueue.map((toast) => `
+        <article class="toast-card" data-toast-id="${toast.id}" style="--route:${toast.color};">
+          <div class="toast-copy">
+            <div class="toast-title">${toast.title}</div>
+            <div class="toast-body">${toast.body}</div>
+          </div>
+          <button class="toast-dismiss" data-dismiss-toast="${toast.id}" type="button" aria-label="Dismiss notification">✕</button>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function pushToast({ title, body, color = "#39d98a", duration = 30000 }) {
+  const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  state.toastQueue = [...state.toastQueue, { id, title, body, color }];
+  render();
+
+  window.setTimeout(() => {
+    dismissToast(id);
+  }, duration);
+}
+
+function dismissToast(toastId) {
+  const nextQueue = state.toastQueue.filter((toast) => toast.id !== toastId);
+  if (nextQueue.length === state.toastQueue.length) {
+    return;
+  }
+
+  state.toastQueue = nextQueue;
+  render();
 }
 
 // ── Journey geometry helpers ──────────────────────────────────
@@ -2290,6 +2332,12 @@ function bindEvents() {
     render();
   });
 
+  document.querySelectorAll("[data-dismiss-toast]").forEach((button) => {
+    button.addEventListener("click", () => {
+      dismissToast(button.dataset.dismissToast);
+    });
+  });
+
   const input = document.querySelector("#destination-input");
   if (input) {
     input.addEventListener("input", (event) => {
@@ -3039,7 +3087,11 @@ function checkConfiguredAlerts() {
     const wasMatched = !!state.alertMatchState[alertConfig.id];
 
     if (matchesWindow && !wasMatched) {
-      window.alert(`${route.name} is arriving at ${stop.name} in ${etaMinutes} min.`);
+      pushToast({
+        title: `${route.name} arriving soon`,
+        body: `${stop.name} in ${etaMinutes} min`,
+        color: route.color
+      });
     }
 
     state.alertMatchState[alertConfig.id] = matchesWindow;
