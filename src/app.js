@@ -57,7 +57,8 @@ const state = {
   busProgress: Object.fromEntries(ROUTES.map((route, index) => [route.id, (index * 0.17) % 1])),
   busPauseUntil: Object.fromEntries(ROUTES.map((route) => [route.id, 0])),
   openTimetable: null,
-  routeDetailsBackScreen: "map"
+  routeDetailsBackScreen: "map",
+  pendingUnsaveTarget: null
 };
 
 const app = document.querySelector("#app");
@@ -809,6 +810,7 @@ function render() {
         ${renderScreenOverlay()}
         ${renderToastLayer()}
         ${renderNav()}
+        ${renderRouteUnsaveModal()}
       </div>
     </div>
   `;
@@ -2275,6 +2277,30 @@ function renderFilterModal() {
   `;
 }
 
+function renderRouteUnsaveModal() {
+  if (!state.pendingUnsaveTarget) {
+    return "";
+  }
+
+  const isRoute = state.pendingUnsaveTarget.type === "route";
+  const itemName = isRoute
+    ? (ROUTES.find((route) => route.id === state.pendingUnsaveTarget.id)?.name ?? "this route")
+    : (state.routeOptionCatalog[state.pendingUnsaveTarget.id]?.label ?? "this route option");
+  const title = isRoute ? "Unsave route?" : "Unsave route option?";
+
+  return `
+    <div class="route-unsave-backdrop" data-route-unsave-backdrop></div>
+    <div class="route-unsave-modal" role="dialog" aria-modal="true" aria-label="Confirm unsave route">
+      <div class="route-unsave-title">${title}</div>
+      <div class="route-unsave-copy">Are you sure you want to unsave ${itemName}?</div>
+      <div class="route-unsave-actions">
+        <button class="ghost-action-button" data-cancel-route-unsave>Cancel</button>
+        <button class="ghost-action-button danger-button" data-confirm-route-unsave>Unsave</button>
+      </div>
+    </div>
+  `;
+}
+
 function renderNav() {
   return `
     <nav class="nav-bar">
@@ -2507,12 +2533,9 @@ function bindEvents() {
       event.stopPropagation();
       const id = button.dataset.favoriteOption;
       if (state.favoriteRouteOptionIds.has(id)) {
-        state.favoriteRouteOptionIds.delete(id);
-        // Revert name to original when unfavoriting
-        const option = state.routeOptionCatalog[id];
-        if (option && option.originalLabel) {
-          option.label = option.originalLabel;
-        }
+        state.pendingUnsaveTarget = { type: "option", id };
+        render();
+        return;
       } else {
         state.favoriteRouteOptionIds.add(id);
       }
@@ -2525,12 +2548,43 @@ function bindEvents() {
       event.stopPropagation();
       const id = button.dataset.favoriteRoute;
       if (state.favoriteRoutes.has(id)) {
-        state.favoriteRoutes.delete(id);
+        state.pendingUnsaveTarget = { type: "route", id };
+        render();
+        return;
       } else {
         state.favoriteRoutes.add(id);
       }
       render();
     });
+  });
+
+  document.querySelector("[data-route-unsave-backdrop]")?.addEventListener("click", () => {
+    state.pendingUnsaveTarget = null;
+    render();
+  });
+
+  document.querySelector("[data-cancel-route-unsave]")?.addEventListener("click", () => {
+    state.pendingUnsaveTarget = null;
+    render();
+  });
+
+  document.querySelector("[data-confirm-route-unsave]")?.addEventListener("click", () => {
+    if (state.pendingUnsaveTarget?.type === "route") {
+      state.favoriteRoutes.delete(state.pendingUnsaveTarget.id);
+    }
+
+    if (state.pendingUnsaveTarget?.type === "option") {
+      const optionId = state.pendingUnsaveTarget.id;
+      state.favoriteRouteOptionIds.delete(optionId);
+      // Revert name to original when unfavoriting.
+      const option = state.routeOptionCatalog[optionId];
+      if (option && option.originalLabel) {
+        option.label = option.originalLabel;
+      }
+    }
+
+    state.pendingUnsaveTarget = null;
+    render();
   });
 
   document.querySelectorAll("[data-edit-option]").forEach((button) => {

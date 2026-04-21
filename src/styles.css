@@ -949,9 +949,56 @@ body[data-theme="light"] .theme-button {
   overflow: hidden;
 }
 
+.route-unsave-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.route-unsave-modal {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 51;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(13, 24, 40, 0.98), rgba(9, 17, 30, 0.98));
+  box-shadow: 0 22px 40px rgba(0, 0, 0, 0.42);
+  padding: 18px;
+}
+
+.route-unsave-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.route-unsave-copy {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.route-unsave-actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+}
+
+body[data-theme="light"] .route-unsave-modal {
+  background: linear-gradient(180deg, #ffffff, #f3f4f6);
+  border-color: var(--line);
+}
+
 body[data-theme="light"] .filter-modal,
 body[data-theme="light"] .bottom-sheet,
-body[data-theme="light"] .panel-page {
+body[data-theme="light"] .panel-page,
+body[data-theme="light"] .route-unsave-modal {
   background: linear-gradient(180deg, #ffffff, #f3f4f6);
   border-color: var(--line);
   color: #111827;
